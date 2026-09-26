@@ -75,9 +75,6 @@
     db = firebase.firestore();
   }
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
-  const ORGANISERS = (window.WANDERLY_ORGANISERS || []).map(e => String(e).toLowerCase());
-  const isOrganiser = () => !!(me && me.email && ORGANISERS.includes(me.email.toLowerCase()));
-  const canDelete = p => !!me && (p.addedBy === me.uid || isOrganiser());
 
   // ---------- map ----------
   // A simple hand-drawn Singapore: no map tiles to download, so it's fast and needs no API key.
@@ -477,7 +474,7 @@
         el('div', {}, el('h4', { class: 'yh', text: `Yes · ${t.yes.length}` }), voterList(t.yes)),
         el('div', {}, el('h4', { class: 'nh', text: `No · ${t.no.length}` }), voterList(t.no))));
 
-    if (canDelete(p)) {
+    if (me) {
       const del = el('button', { class: 'danger', type: 'button', text: 'Delete place' });
       const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel', hidden: '' });
       const ask = el('span', { class: 'small', text: '' });
@@ -496,19 +493,19 @@
           selectedId = null; renderAll(); toast(`Deleted ${p.name}`);
         } catch (x) {
           del.disabled = false; disarm();
-          toast(x && x.code === 'permission-denied' ? "You can only delete places you added." : "Couldn't delete the place. Try again.");
+          toast(x && x.code === 'permission-denied' ? "You don't have permission to delete places on this trip." : "Couldn't delete the place. Try again.");
         }
       };
       box.append(el('div', { class: 'delrow' }, ask, el('div', { class: 'row2' }, del, cancel)));
     }
   }
 
-  // Organisers only: delete every place with more No votes than Yes.
+  // Delete every place with more No votes than Yes.
   let bulkArmed = false;
   function renderBulk() {
     const box = $('#bulk');
     box.replaceChildren();
-    if (!isOrganiser()) return;
+    if (!me) return;
     const rejected = places.filter(p => { const t = tally(p.id); return t.no.length > t.yes.length; });
     if (!rejected.length) { bulkArmed = false; return; }
     const names = rejected.map(p => p.name).join(', ');
@@ -531,7 +528,7 @@
         toast(`Deleted ${rejected.length} place${rejected.length === 1 ? '' : 's'}`);
       } catch (x) {
         bulkArmed = false; renderBulk();
-        toast(x && x.code === 'permission-denied' ? 'Only organisers can do this. Check the organiser email in the Firebase rules.' : "Couldn't delete the places. Try again.");
+        toast(x && x.code === 'permission-denied' ? "You don't have permission to delete places on this trip." : "Couldn't delete the places. Try again.");
       }
     };
     box.append(el('p', { class: 'small', text: `Delete ${names} for everyone?` }), el('div', { class: 'row2' }, yes, no));

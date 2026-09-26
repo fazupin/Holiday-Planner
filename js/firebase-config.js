@@ -9,7 +9,3 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "16699951428",
   appId: "1:16699951428:web:b553845b36239f19c6af11"
 };
-
-// Organisers can delete any place. Use the Google email they sign in with.
-// Keep this list the same as organisers() in firestore.rules.
-window.WANDERLY_ORGANISERS = ["zulfazlin.upin09@gmail.com"];

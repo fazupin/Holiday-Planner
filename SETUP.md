@@ -49,7 +49,7 @@ The rules make sure that:
 - only signed-in people can see anything
 - each person can only change their own votes
 - chat messages are posted under the sender's real Google name and can't be edited
-- only the person who added a place can remove it
+- anyone on the trip can delete a place, but only the person who added it can edit it
 
 ### Optional: only let your friends in
 
