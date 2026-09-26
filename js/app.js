@@ -315,6 +315,7 @@
   map.createPane('mrtlines').style.zIndex = 190; // above the hand-drawn land and the street map
   map.createPane('stationlabels').style.zIndex = 195;
   const mrtLines = L.layerGroup();
+  const ZOOM_HINT = matchMedia('(hover: hover)').matches ? 'Double-click to zoom in' : 'Double-tap to zoom in';
   const LINE_COLOURS = { NS: '#D42E12', EW: '#009645', CG: '#009645', NE: '#9900AA', CC: '#FA9E0D', CE: '#FA9E0D', DT: '#005EC4', TE: '#9D5B25' };
   const hexColour = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
   async function loadMrtLines() {
@@ -408,11 +409,17 @@
       const hit = L.circleMarker([st.lat, st.lng], {
         pane: 'mrtlines', radius: 11, stroke: false, fillColor: '#000000', fillOpacity: 0, bubblingMouseEvents: false,
       })
-        .bindTooltip(`${esc(st.name)} ${kind}${interchange ? '<br><small>Interchange</small>' : ''}`, { direction: 'top', offset: [0, -6] })
+        .bindTooltip(`${esc(st.name)} ${kind}${interchange ? '<br><small>Interchange</small>' : ''}<br><small class="tiphint">${ZOOM_HINT}</small>`, { direction: 'top', offset: [0, -6] })
         .on('mouseover', () => dot.setStyle({ radius: size + 2.5, fillOpacity: 0.95 }))
         .on('mouseout', () => dot.setStyle(rest))
         // While adding a place, a tap near a station should still drop the pin there.
         .on('click', e => { if (adding) handleMapClick(e.latlng); })
+        // Double-click (double-tap on phones): zoom in and centre on the station.
+        .on('dblclick', e => {
+          L.DomEvent.stop(e);
+          const z = map.getZoom();
+          map.flyTo([st.lat, st.lng], z < 16 ? 16 : Math.min(z + 1, map.getMaxZoom()), { duration: reduceMotion ? 0 : 0.6 });
+        })
         .addTo(mrtLines);
     }
   }

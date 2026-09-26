@@ -252,6 +252,7 @@ path.res { fill: var(--sea-in); stroke: none; }
 #map.show-stations .stlabel span { display: block; }
 #map.streets-on .stlabel span { color: #44524D; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF; }
 .leaflet-tooltip { font: 400 12px var(--body); }
+.leaflet-tooltip .tiphint { color: #6B7A75; }
 
 .maplabel { background: none; border: 0; pointer-events: none; }
 .maplabel span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: var(--muted); }
