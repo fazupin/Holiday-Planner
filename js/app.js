@@ -274,7 +274,7 @@
     sw.onclick = () => { settings[sw.dataset.setting] = !settings[sw.dataset.setting]; saveSettings(); applySettings(); renderSettings(); };
   }
   $('#clearMapData').onclick = () => {
-    try { localStorage.removeItem('wanderly-mrt-lines-v1'); localStorage.removeItem('wanderly-mrt-v1'); } catch { /* storage blocked */ }
+    try { for (const k of ['wanderly-mrt-lines-v2', 'wanderly-mrt-lines-v1', 'wanderly-mrt-v1']) localStorage.removeItem(k); } catch { /* storage blocked */ }
     toast('Cleared. The MRT lines will download again next time you open Wanderly.');
   };
   $('#resetSettings').onclick = () => {
@@ -318,8 +318,19 @@
   const ZOOM_HINT = matchMedia('(hover: hover)').matches ? 'Double-click to zoom in' : 'Double-tap to zoom in';
   const LINE_COLOURS = { NS: '#D42E12', EW: '#009645', CG: '#009645', NE: '#9900AA', CC: '#FA9E0D', CE: '#FA9E0D', DT: '#005EC4', TE: '#9D5B25' };
   const hexColour = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
+  // Lines that OpenStreetMap already lists but that aren't open yet: Jurong Region Line (JRL)
+  // and Cross Island Line (CRL). Matched by name/code, and by stations only those lines have.
+  const NOT_OPEN_LINE = /Jurong Region|Cross Island|^(JR|JS|JE|JW|CR|CP)\b/i;
+  const NOT_OPEN_STATIONS = new Set(['tengah', 'tengah plantation', 'tengah park', 'hong kah', 'corporation', 'jurong west', 'bahar junction', 'gek poh', 'tawas', 'nanyang gateway', 'nanyang crescent', 'peng kang hill', 'enterprise', 'tukang', 'jurong hill', 'jurong pier', 'toh guan', 'pandan reservoir', 'bukit batok west', 'aviation park', 'loyang', 'elias', 'pasir ris east', 'tampines north', 'defu', 'teck ghee', 'turf city']);
+  const isOpenLine = line => !NOT_OPEN_LINE.test(line.name || '') && !NOT_OPEN_LINE.test(line.ref || '')
+    && !line.stops.some(s => NOT_OPEN_STATIONS.has(String(s[2] || '').toLowerCase()));
+  // Bukit Panjang LRT, used if OpenStreetMap's data doesn't include it: Choa Chu Kang to
+  // Bukit Panjang, then the loop through Petir ... Senja and back to Bukit Panjang.
+  const BP_LRT = [['Choa Chu Kang', 1.3854, 103.7443], ['South View', 1.3802, 103.7452], ['Keat Hong', 1.3786, 103.7491], ['Teck Whye', 1.3767, 103.7536],
+    ['Phoenix', 1.3786, 103.7580], ['Bukit Panjang', 1.3780, 103.7631], ['Petir', 1.3778, 103.7667], ['Pending', 1.3762, 103.7710], ['Bangkit', 1.3802, 103.7726],
+    ['Fajar', 1.3845, 103.7708], ['Segar', 1.3877, 103.7697], ['Jelapang', 1.3869, 103.7646], ['Senja', 1.3827, 103.7624], ['Bukit Panjang', 1.3780, 103.7631]];
   async function loadMrtLines() {
-    let lines = cacheGet('wanderly-mrt-lines-v1', 30 * 864e5);
+    let lines = cacheGet('wanderly-mrt-lines-v2', 30 * 864e5);
     if (!lines) {
       const els = await overpass(`[out:json][timeout:30];
         relation["route"~"^(subway|light_rail)$"](1.15,103.6,1.48,104.1);
@@ -343,9 +354,13 @@
         if (stops.length < 2) continue;
         const prefix = String(t.ref || '').slice(0, 2).toUpperCase();
         const lrt = t.route === 'light_rail';
-        lines.push({ colour: hexColour(t.colour) || LINE_COLOURS[prefix] || '#748477', lrt, stops });
+        lines.push({ colour: hexColour(t.colour) || LINE_COLOURS[prefix] || '#748477', lrt, stops, name: str(t.name, 80), ref: str(t.ref, 12) });
       }
-      if (lines.length) cacheSet('wanderly-mrt-lines-v1', lines);
+      if (lines.length) cacheSet('wanderly-mrt-lines-v2', lines);
+    }
+    lines = lines.filter(isOpenLine);
+    if (!lines.some(l => l.stops.some(s => /^(Bangkit|Senja|Fajar|Jelapang)$/i.test(s[2] || '')))) {
+      lines.push({ colour: '#748477', lrt: true, name: 'Bukit Panjang LRT', ref: 'BP', stops: BP_LRT.map(([n, lat, lng]) => [lat, lng, n]) });
     }
     // OpenStreetMap stores each line twice (one per direction, on parallel tracks).
     // Keep one copy of each route: two routes are the same if they stop at the same stations.
