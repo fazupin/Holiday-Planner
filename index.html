@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Wanderly – Singapore Trip Picks</title>
   <script>
+    // Firebase Hosting serves the site at two addresses. Google sign-in only works reliably on
+    // phones at firebaseapp.com (the same address as Firebase's sign-in helper), so use that one.
+    if (location.hostname === 'wander-ly-50ea5.web.app') location.replace('https://wander-ly-50ea5.firebaseapp.com' + location.pathname + location.search + location.hash);
     // Apply the theme chosen in Settings before the page draws, so it doesn't flash.
     try { var t = (JSON.parse(localStorage.getItem('wanderly-settings') || '{}')).theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
@@ -18,7 +21,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=26">
+  <link rel="stylesheet" href="css/style.css?v=27">
 </head>
 <body>
   <div class="app">
@@ -137,6 +140,10 @@
       <p class="brand">Wanderly</p>
       <h2>Singapore Trip Picks</h2>
       <p id="gateText">Sign in with your Google account to see the places and vote.</p>
+      <div class="inapp" id="inAppWarn" hidden>
+        <p><strong>Open this page in Safari or Chrome.</strong> You're in <span id="inAppName">an app</span>'s built-in browser, and Google doesn't allow signing in here. Tap the <strong>⋯</strong> or share button and choose <strong>Open in browser</strong>, or copy the link and paste it into your browser.</p>
+        <button type="button" class="ghost smallbtn" id="copyLinkBtn">Copy link</button>
+      </div>
       <label class="agecheck" id="ageCheck">
         <input type="checkbox" id="ageOk">
         <span>I'm 13 or older. If I'm under 18, a parent or guardian has agreed to me using Wanderly.</span>
@@ -254,7 +261,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script src="js/firebase-config.js?v=26"></script>
-  <script src="js/app.js?v=26"></script>
+  <script src="js/firebase-config.js?v=27"></script>
+  <script src="js/app.js?v=27"></script>
 </body>
 </html>

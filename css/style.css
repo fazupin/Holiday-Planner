@@ -504,6 +504,12 @@ button.me:hover { border-color: var(--accent); }
 .gatecard p { color: var(--muted); margin: 0 0 18px; }
 .gatecard .err { margin: 14px 0 0; }
 .gatecard .legal { margin: 18px 0 0; font-size: 12px; }
+.inapp {
+  text-align: left; margin: 0 0 14px; padding: 12px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--no) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--no) 40%, var(--line));
+  font-size: 13px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+}
+.inapp p { margin: 0; color: var(--ink); }
 .agecheck {
   display: flex; gap: 10px; align-items: flex-start; text-align: left;
   margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;

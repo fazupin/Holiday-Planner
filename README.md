@@ -13,9 +13,9 @@ A group trip planner that runs in your browser. Friends suggest places on a map 
 
 ## Getting started
 
-The app needs a free Firebase project for sign-in and shared data, and GitHub Pages to put it online. Follow [SETUP.md](SETUP.md) step by step (about 15 minutes).
+The app needs a free Firebase project for sign-in, shared data and hosting. Follow [SETUP.md](SETUP.md) step by step (about 15 minutes).
 
-Once it's set up, send your friends the link: `https://fazupin.github.io/Holiday-Planner/`
+Once it's set up, send your friends the link: `https://wander-ly-50ea5.firebaseapp.com` (use the invite link from a project's **Project** tab)
 
 ## Adding places
 

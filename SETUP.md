@@ -70,6 +70,24 @@ Include your own email. Anyone not on the list sees a message asking them to con
 
 GitHub Pages is free for public repositories. For a private repository it needs a paid GitHub plan.
 
+## 6b. Publish on Firebase Hosting (needed for sign-in on phones)
+
+On iPhones, and on some Android browsers, Google sign-in fails with "Unable to save initial state" when the app is on a different website from Firebase's sign-in helper. Hosting the app on Firebase's own address, `https://wander-ly-50ea5.firebaseapp.com`, fixes this. A GitHub workflow in [.github/workflows/firebase-hosting.yml](.github/workflows/firebase-hosting.yml) publishes the site there every time `main` is pushed. It needs a key, which you set up once:
+
+1. **Turn on Hosting.** In Firebase, open **Hosting & Serverless → Hosting** and click **Get started**. Click **Next** through the steps (you don't need to run any of the commands shown), then **Continue to console**.
+2. **Create a publishing account.** Open <https://console.cloud.google.com/iam-admin/serviceaccounts?project=wander-ly-50ea5> and click **Create service account**.
+   - Name: `github-deploy`, then **Create and continue**.
+   - Add two roles: **Firebase Hosting Admin** and **API Keys Viewer**. Click **Continue**, then **Done**.
+3. **Download its key.** Click the new `github-deploy` account, open the **Keys** tab, then **Add key → Create new key → JSON → Create**. A `.json` file downloads.
+4. **Give the key to GitHub.** In your repo on GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
+   - Name: `FIREBASE_SERVICE_ACCOUNT`
+   - Secret: open the downloaded `.json` file in Notepad, copy **everything**, and paste it in.
+   - Click **Add secret**.
+5. **Delete the downloaded `.json` file** from your computer. Never put it in the project folder or share it. It lets anyone publish to your site.
+6. **Publish.** On GitHub, open **Actions → Deploy to Firebase Hosting → Run workflow**. Wait for the green tick, then open <https://wander-ly-50ea5.firebaseapp.com>.
+
+From then on, every push publishes automatically. Share the **firebaseapp.com** link with friends. The GitHub Pages link still works, but sign-in may fail on phones.
+
 ## 7. Invite your friends
 
 1. Open the app and sign in. Create a project for your trip (for example "Singapore with uni friends").
@@ -89,9 +107,9 @@ Whenever `firestore.rules` changes, paste it into **Firestore → Rules** and cl
 1. In Firebase, click the gear icon, then **Project settings → General**.
 2. Set **Public-facing name** to `Wanderly` and save.
 3. Optional, for a more polished sign-in screen: in the Google Cloud console (<https://console.cloud.google.com>, same Google account and project), open **Google Auth Platform → Branding**. Add:
-   - App home page: `https://fazupin.github.io/Holiday-Planner/`
-   - Privacy policy: `https://fazupin.github.io/Holiday-Planner/privacy.html`
-   - Terms of service: `https://fazupin.github.io/Holiday-Planner/terms.html`
+   - App home page: `https://wander-ly-50ea5.firebaseapp.com/`
+   - Privacy policy: `https://wander-ly-50ea5.firebaseapp.com/privacy.html`
+   - Terms of service: `https://wander-ly-50ea5.firebaseapp.com/terms.html`
 
 ### Delete data automatically after 12 months
 Everything the app saves has an `expireAt` date 12 months ahead. Opening a project pushes its date back. To make Firebase delete expired data:
@@ -106,7 +124,7 @@ Everything the app saves has an `expireAt` date 12 months ahead. Opening a proje
 If Google asks you to upgrade to a paid plan for this, skip it and tell me. We can remove old projects another way.
 
 ### Stop bots (App Check), optional
-1. Go to <https://www.google.com/recaptcha/admin> and create a **reCAPTCHA v3** key. Add the domain `fazupin.github.io`, and `localhost` if you test locally.
+1. Go to <https://www.google.com/recaptcha/admin> and create a **reCAPTCHA v3** key. Add the domain `wander-ly-50ea5.firebaseapp.com`, and `localhost` if you test locally.
 2. In Firebase, open **App Check**, register your web app with **reCAPTCHA v3**, and paste the **secret key**.
 3. Send the **site key** to Claude, or paste it into `window.APP_CHECK_SITE_KEY` in [js/firebase-config.js](js/firebase-config.js).
 4. After a few days, check that App Check's request graph shows most requests as verified. Then click **Enforce** for Cloud Firestore and Authentication.

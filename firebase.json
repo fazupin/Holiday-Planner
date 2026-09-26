@@ -1,0 +1,22 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "**/.*",
+      "**/node_modules/**",
+      "inbox/**",
+      "README.md",
+      "SETUP.md",
+      "CLAUDE.md",
+      "LICENSE"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}

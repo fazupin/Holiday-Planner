@@ -1596,6 +1596,20 @@
     if (code === 'auth/operation-not-allowed') return 'Google sign-in is switched off in Firebase. The organiser needs to turn it on (SETUP.md, step 2).';
     return 'Sign-in failed. Try again.';
   }
+  // Apps like Instagram, Facebook, TikTok and Line open links in their own built-in browser,
+  // where Google blocks sign-in. Spot them and ask people to open the page in a real browser.
+  const IN_APP = [['Instagram', /Instagram/i], ['Facebook', /FBAN|FBAV|FB_IAB/i], ['TikTok', /TikTok|musical_ly|BytedanceWebview/i],
+    ['Line', /\bLine\//i], ['Snapchat', /Snapchat/i], ['WeChat', /MicroMessenger/i], ['Telegram', /Telegram/i], ['X (Twitter)', /Twitter/i]];
+  const inApp = IN_APP.find(([, re]) => re.test(navigator.userAgent)) || (/Android.*; wv\)/.test(navigator.userAgent) ? ['this app', null] : null);
+  if (inApp) {
+    $('#inAppWarn').hidden = false;
+    $('#inAppName').textContent = inApp[0];
+    $('#copyLinkBtn').onclick = async () => {
+      try { await navigator.clipboard.writeText(location.href); toast('Link copied. Paste it into Safari or Chrome.'); }
+      catch { toast(location.href); }
+    };
+  }
+
   // Age check: Wanderly is for ages 13+, and under-18s need a parent's or guardian's permission.
   // Sign-in stays disabled until the box is ticked. Remembered on this device.
   const ageBox = $('#ageOk');

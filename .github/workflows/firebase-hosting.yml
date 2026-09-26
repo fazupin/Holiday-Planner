@@ -1,0 +1,20 @@
+# Publishes the site to Firebase Hosting (https://wander-ly-50ea5.firebaseapp.com)
+# every time main is pushed. Needs the FIREBASE_SERVICE_ACCOUNT secret (see SETUP.md).
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: wander-ly-50ea5
