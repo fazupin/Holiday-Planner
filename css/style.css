@@ -114,8 +114,13 @@ path.res { fill: var(--sea-in); stroke: none; }
 .kdot.inter { width: 9px; height: 9px; background: #5B6B66; opacity: .85; box-shadow: 0 0 0 1px #FFFFFF; }
 .kbus { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: #FFFFFF; border: 1.5px solid #2F6FC7; color: #2F6FC7; }
 .kbus svg { width: 11px; height: 11px; display: block; }
-.kpin { transform: scale(.55); transform-origin: center; }
-.kpin .pin { box-shadow: none; }
+/* Small pins drawn at key size (not scaled), so they don't spill into the next row */
+.kpin { display: grid; place-items: center; width: 28px; height: 30px; padding-bottom: 4px; }
+.kpin .pin { width: 20px; height: 20px; border-width: 1.5px; box-shadow: none; }
+.kpin .pin .emoji { font-size: 10px; }
+.kpin .pin .badge { top: -7px; right: -7px; min-width: 13px; height: 13px; padding: 0 3px; font-size: 8px; line-height: 13px; }
+.keylist.places { gap: 10px; }
+.keylist.places .ksym { height: 30px; }
 
 .mapmode {
   display: flex; gap: 2px; padding: 3px;
