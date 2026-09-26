@@ -1360,9 +1360,18 @@
     } else toast('Lost connection to the trip. Reload the page to reconnect.');
   }
   // A project's data stops being readable when you leave it or it's deleted: go back to your projects.
+  // Only treat it as "you've left" when your project list agrees (that list updates separately).
+  // Otherwise the security rules refused something, usually because the rules in Firebase are
+  // older than the app, so say that instead of leaving the project.
+  let rulesWarned = false;
   function onDataError(err) {
-    if (err && err.code === 'permission-denied') { if (projectId) { closeProject(); toast("You're no longer in that project."); } }
-    else toast('Lost connection to the trip. Reload the page to reconnect.');
+    if (!(err && err.code === 'permission-denied')) { toast('Lost connection to the trip. Reload the page to reconnect.'); return; }
+    if (!projectId) return;
+    if (!currentProject()) { closeProject(); toast("You're no longer in that project."); return; }
+    if (!rulesWarned) {
+      rulesWarned = true;
+      toast("Part of this project couldn't load. The Firebase security rules may need updating (see SETUP.md).");
+    }
   }
   function startListening() {
     stopListening();
