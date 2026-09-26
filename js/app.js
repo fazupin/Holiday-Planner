@@ -1513,6 +1513,7 @@
     $('#gateText').textContent = text;
     const btn = $('#signIn');
     btn.hidden = !auth;
+    $('#ageCheck').hidden = !auth;
     btn.textContent = signedIn ? 'Use a different Google account' : 'Sign in with Google';
     $('#gateErr').hidden = true;
   }
@@ -1523,8 +1524,19 @@
     if (code === 'auth/operation-not-allowed') return 'Google sign-in is switched off in Firebase. The organiser needs to turn it on (SETUP.md, step 2).';
     return 'Sign-in failed. Try again.';
   }
+  // Age check: Wanderly is for ages 13+, and under-18s need a parent's or guardian's permission.
+  // Sign-in stays disabled until the box is ticked. Remembered on this device.
+  const ageBox = $('#ageOk');
+  try { ageBox.checked = localStorage.getItem('wanderly-age-ok') === 'yes'; } catch { /* storage blocked */ }
+  const syncAge = () => {
+    $('#signIn').disabled = !ageBox.checked;
+    try { if (ageBox.checked) localStorage.setItem('wanderly-age-ok', 'yes'); else localStorage.removeItem('wanderly-age-ok'); } catch { /* storage blocked */ }
+  };
+  ageBox.onchange = syncAge;
+  syncAge();
+
   $('#signIn').onclick = async () => {
-    if (!auth) return;
+    if (!auth || !ageBox.checked) return;
     if (me) await auth.signOut();
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -1545,6 +1557,7 @@
   if (location.protocol === 'file:') {
     showGate('Google sign-in only works when the app is on a website. Open the GitHub Pages link, or see SETUP.md to test it on your computer.', false);
     $('#signIn').hidden = true;
+    $('#ageCheck').hidden = true;
   } else if (!window.firebase) {
     showGate("Couldn't load Google sign-in. Check your internet connection and reload the page.", false);
   } else if (!configured) {

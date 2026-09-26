@@ -417,6 +417,13 @@ path.res { fill: var(--sea-in); stroke: none; }
 .gatecard p { color: var(--muted); margin: 0 0 18px; }
 .gatecard .err { margin: 14px 0 0; }
 .gatecard .legal { margin: 18px 0 0; font-size: 12px; }
+.agecheck {
+  display: flex; gap: 10px; align-items: flex-start; text-align: left;
+  margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.agecheck input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
+#signIn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Privacy Policy and Terms of Use pages */
 body.docpage { height: auto; }
