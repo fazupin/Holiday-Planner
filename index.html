@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
   <div class="app">
@@ -35,9 +35,36 @@
         <div id="map" aria-label="Map of Singapore with places to vote on"></div>
         <button class="mbtn addbtn" id="addBtn" type="button" hidden>+ Add a place</button>
         <div class="hint" id="hint" hidden>Tap the map where the place is</div>
-        <div class="mapmode" id="mapMode" role="group" aria-label="Map style">
-          <button type="button" data-mode="simple" aria-pressed="true">Simple</button>
-          <button type="button" data-mode="detailed" aria-pressed="false">Detailed</button>
+        <div class="mapctl">
+          <div class="mapmode" id="mapMode" role="group" aria-label="Map style">
+            <button type="button" data-mode="simple" aria-pressed="true">Simple</button>
+            <button type="button" data-mode="detailed" aria-pressed="false">Detailed</button>
+          </div>
+          <button type="button" class="keybtn" id="keyBtn" aria-expanded="false" aria-controls="mapKey">Key</button>
+        </div>
+        <div class="mapkey" id="mapKey" role="region" aria-label="Map key" hidden>
+          <h4>MRT lines</h4>
+          <ul class="keylist">
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#D42E12"/></svg>North–South</li>
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#009645"/></svg>East–West</li>
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#9900AA"/></svg>North East</li>
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#FA9E0D"/></svg>Circle</li>
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#005EC4"/></svg>Downtown</li>
+            <li><svg class="kline" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#9D5B25"/></svg>Thomson–East Coast</li>
+            <li><svg class="kline lrt" viewBox="0 0 28 8" aria-hidden="true"><line x1="3" y1="4" x2="25" y2="4" stroke="#748477"/></svg>LRT</li>
+          </ul>
+          <h4>Stations and stops</h4>
+          <ul class="keylist">
+            <li><span class="ksym"><span class="kdot"></span></span>Station</li>
+            <li><span class="ksym"><span class="kdot inter"></span></span>Interchange</li>
+            <li><span class="ksym"><span class="tsym kbus"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="8" height="8" rx="1.6" fill="currentColor"/><rect x="3.2" y="2.8" width="5.6" height="3" rx=".5" fill="#fff"/><circle cx="4" cy="7.6" r=".8" fill="#fff"/><circle cx="8" cy="7.6" r=".8" fill="#fff"/><rect x="3" y="9.5" width="1.6" height="1.5" rx=".4" fill="currentColor"/><rect x="7.4" y="9.5" width="1.6" height="1.5" rx=".4" fill="currentColor"/></svg></span></span>Bus stop <small>(Detailed map, zoomed in)</small></li>
+          </ul>
+          <h4>Places</h4>
+          <ul class="keylist">
+            <li><span class="ksym"><span class="kpin"><span class="pin"><span class="emoji">☕</span></span></span></span>Suggested place</li>
+            <li><span class="ksym"><span class="kpin"><span class="pin"><span class="emoji">☕</span><span class="badge">3</span></span></span></span>Number of Yes votes</li>
+            <li><span class="ksym"><span class="kpin"><span class="pin out"><span class="emoji">☕</span></span></span></span>Voted out (more No than Yes)</li>
+          </ul>
         </div>
       </div>
 
@@ -87,7 +114,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/firebase-config.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

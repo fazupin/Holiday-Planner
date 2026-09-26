@@ -209,6 +209,16 @@
   }
   for (const b of document.querySelectorAll('#mapMode button')) b.onclick = () => setMapMode(b.dataset.mode);
 
+  // Map key: opens and closes with the Key button, or closes with Escape.
+  function showKey(open) {
+    $('#mapKey').hidden = !open;
+    $('#keyBtn').setAttribute('aria-expanded', String(open));
+  }
+  $('#keyBtn').onclick = () => showKey($('#mapKey').hidden);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#mapKey').hidden) showKey(false); });
+  L.DomEvent.disableClickPropagation($('#mapKey'));
+  L.DomEvent.disableScrollPropagation($('#mapKey'));
+
   // ---------- MRT stations and bus stops (OpenStreetMap data via Overpass, free, no key) ----------
   const OVERPASS = 'https://overpass-api.de/api/interpreter';
   async function overpass(query) {

@@ -89,8 +89,35 @@ path.land { fill: var(--land); stroke: var(--land-edge); stroke-width: 2.5px; st
 path.foreign { fill: var(--foreign); stroke: var(--land-edge); stroke-width: 1.5px; stroke-opacity: .5; }
 path.park { fill: var(--park); stroke: none; }
 path.res { fill: var(--sea-in); stroke: none; }
+.mapctl { position: absolute; left: 12px; bottom: 12px; z-index: 1000; display: flex; gap: 8px; align-items: stretch; }
+.keybtn {
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 10px; box-shadow: var(--shadow); padding: 0 14px; font-weight: 700; font-size: 13px;
+}
+.keybtn[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.mapkey {
+  position: absolute; left: 12px; bottom: 60px; z-index: 1000;
+  width: 250px; max-width: calc(100% - 24px); max-height: calc(100% - 140px); overflow: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+.mapkey h4 { margin: 10px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.mapkey h4:first-child { margin-top: 0; }
+.keylist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.keylist li { display: flex; align-items: center; gap: 10px; }
+.keylist small { color: var(--muted); }
+.kline { flex: none; width: 28px; height: 8px; }
+.kline line { stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 0.1 5; opacity: .85; }
+.kline.lrt line { stroke-width: 1.8; opacity: .6; }
+.ksym { flex: none; width: 28px; height: 22px; display: grid; place-items: center; position: relative; }
+.kdot { width: 6px; height: 6px; border-radius: 50%; background: #005EC4; opacity: .6; }
+.kdot.inter { width: 9px; height: 9px; background: #5B6B66; opacity: .85; box-shadow: 0 0 0 1px #FFFFFF; }
+.kbus { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: #FFFFFF; border: 1.5px solid #2F6FC7; color: #2F6FC7; }
+.kbus svg { width: 11px; height: 11px; display: block; }
+.kpin { transform: scale(.55); transform-origin: center; }
+.kpin .pin { box-shadow: none; }
+
 .mapmode {
-  position: absolute; left: 12px; bottom: 12px; z-index: 1000;
   display: flex; gap: 2px; padding: 3px;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
 }
