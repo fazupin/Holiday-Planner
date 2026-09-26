@@ -469,7 +469,25 @@ button.itinplace { font-size: 15px; }
 .itinform .small { margin: 8px 0 0; }
 .formrow { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; }
 .form select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--paper); color: var(--ink); }
-.planbtn { margin-top: 14px; }
+.fieldlabel { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 4px; }
+.fixeddate { margin: 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; font-size: 14px; }
+.tickrow { display: flex !important; align-items: center; gap: 10px; margin: 16px 0 4px !important; font-weight: 700; cursor: pointer; }
+.tickrow input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.tripline { margin: 0 0 6px; font-size: 13px; }
+.tripline.missing { padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); }
+.confirmzone { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.confirmzone .small { margin: 0; }
+.confirmed { margin: 0; font-weight: 700; color: var(--yes); }
+.row .ar.confirmedtag { color: var(--yes); font-weight: 700; }
+.projcard { grid-template-areas: "name go" "dates go" "meta go"; }
+.projcard .pcdates { grid-area: dates; font-size: 12px; color: var(--muted); }
+.tripdates { font-size: 14px; }
+.startform.compact { margin: 10px 0 0; }
+.startform.compact input { padding: 9px 12px; font-size: 15px; border-radius: 10px; }
+.startform .formrow.dates { margin: 0; grid-template-columns: 1fr 1fr; }
+.startform .formrow.dates label { display: block; font-size: 13px; font-weight: 700; margin: 0 0 4px; }
+.startform .formrow.dates input { width: 100%; }
+.formrow .span2 { grid-column: 1 / -1; margin: 0; }
 
 .checklist { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; }
 .checklist li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line); }
@@ -671,6 +689,8 @@ body.docpage { height: auto; }
   .tabs button { padding: 10px 4px; font-size: 13px; }
   .stop { grid-template-columns: 54px minmax(0, 1fr); }
   .formrow { grid-template-columns: 1fr; }
+  .startform .formrow.dates { grid-template-columns: 1fr 1fr; }
+  .tickrow input { width: 22px; height: 22px; }
   .checklist li { padding: 11px 0; }
   .checklist input[type="checkbox"] { width: 22px; height: 22px; }
 }

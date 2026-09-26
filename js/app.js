@@ -796,9 +796,6 @@
       p.activities.length ? el('p', { class: 'eyebrow', text: 'Things to do' }) : null,
       p.activities.length ? el('ul', { class: 'acts' }, ...p.activities.map(a => el('li', { text: a }))) : null,
       byline ? el('p', { class: 'srcnote', text: byline }) : null));
-    const planBtn = el('button', { class: 'ghost small-btn planbtn', type: 'button', text: '+ Add to itinerary' });
-    planBtn.onclick = () => openItinForm({ id: null, pre: { placeId: p.id } });
-    box.append(planBtn);
 
     const yesB = el('button', { class: 'vbtn yes', type: 'button', 'aria-pressed': String(mine === 'yes'), text: "Yes, I'm in" });
     const noB = el('button', { class: 'vbtn no', type: 'button', 'aria-pressed': String(mine === 'no'), text: 'No, skip it' });
@@ -826,6 +823,29 @@
       el('div', { class: 'voters' },
         el('div', {}, el('h4', { class: 'yh', text: `Yes · ${t.yes.length}` }), voterList(t.yes)),
         el('div', {}, el('h4', { class: 'nh', text: `No · ${t.no.length}` }), voterList(t.no))));
+
+    // Confirm location: once more than half the group has voted Yes (and Yes beats No),
+    // anyone can confirm the place, which adds it to the itinerary.
+    const stop = itinerary.find(s => s.placeId === p.id);
+    const need = votesNeeded();
+    const confirmBox = el('div', { class: 'confirmzone' });
+    if (stop) {
+      const see = el('button', { class: 'linkbtn', type: 'button', text: 'See it in the itinerary' });
+      see.onclick = () => showTab('itin');
+      const when = [stop.date ? fmtDate(stop.date) : '', stop.time ? fmtTime(stop.time) : ''].filter(Boolean).join(', ');
+      confirmBox.append(el('p', { class: 'confirmed', text: `✓ Confirmed${when ? ` · ${when}` : ''}` }), see);
+    } else if (me && t.yes.length > t.no.length && t.yes.length >= need) {
+      const btn = el('button', { class: 'primary', type: 'button', text: '✓ Confirm location' });
+      btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = 'Confirming…';
+        try { await confirmPlace(p); }
+        catch { btn.disabled = false; btn.textContent = '✓ Confirm location'; toast("Couldn't confirm the place. Try again."); }
+      };
+      confirmBox.append(btn, el('p', { class: 'small', text: 'Most of the group wants to go. Confirming adds it to the itinerary, where you can set the meeting time.' }));
+    } else {
+      confirmBox.append(el('p', { class: 'small', text: `Confirm location unlocks when at least ${need} ${need === 1 ? 'person votes' : 'people vote'} Yes, and Yes is ahead of No.` }));
+    }
+    box.append(confirmBox);
 
     if (me) {
       const del = el('button', { class: 'danger', type: 'button', text: 'Delete place' });
@@ -901,7 +921,9 @@
       const b = el('button', { class: 'row' + (out ? ' out' : ''), type: 'button', 'aria-current': String(p.id === selectedId) },
         el('span', { class: 'pos', text: String(i + 1) }),
         el('span', { class: 'ic', 'aria-hidden': 'true', text: p.icon }),
-        el('span', { class: 'nm' }, p.name, el('span', { class: 'ar', text: out ? 'Voted out' : (p.area || coordText(p.lat, p.lng)) })),
+        el('span', { class: 'nm' }, p.name, itinerary.some(s => s.placeId === p.id)
+          ? el('span', { class: 'ar confirmedtag', text: '✓ Confirmed' })
+          : el('span', { class: 'ar', text: out ? 'Voted out' : (p.area || coordText(p.lat, p.lng)) })),
         el('span', { class: 'ct' }, el('span', { class: 'y', text: `${t.yes.length} yes` }), el('span', { class: 'n', text: `${t.no.length} no` })),
         el('span', { class: 'mini', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })));
       b.onclick = () => { if (adding) stopAdd(); select(p.id, true); };
@@ -976,6 +998,10 @@
         const see = el('button', { class: 'linkbtn', type: 'button', text: 'See it and vote' });
         see.onclick = () => (places.some(p => p.id === m.placeId) ? select(m.placeId, true) : toast('That place has been removed.'));
         body.append('added ', el('b', { text: `${m.placeIcon || '📍'} ${m.placeName || 'a place'}` }), ' to the vote. ', see);
+      } else if (m.kind === 'confirmed') {
+        const see = el('button', { class: 'linkbtn', type: 'button', text: 'See the itinerary' });
+        see.onclick = () => showTab('itin');
+        body.append('confirmed ', el('b', { text: `${m.placeIcon || '📍'} ${m.placeName || 'a place'}` }), ". It's on the itinerary. ", see);
       } else if (m.kind === 'rename') {
         body.append('renamed the project from ', el('b', { text: `"${m.from || 'Untitled'}"` }), ' to ', el('b', { text: `"${m.to || 'Untitled'}"` }), '.');
       } else body.append(linkify(m.text));
@@ -1182,11 +1208,39 @@
   }
   const sortStops = list => [...list].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || (a.time || '99').localeCompare(b.time || '99') || a.title.localeCompare(b.title));
 
+  // Yes votes needed before a place can be confirmed: more than half the people in the project.
+  function votesNeeded() {
+    const p = currentProject();
+    return Math.floor(((p && p.members.length) || 1) / 2) + 1;
+  }
+  // Confirm a voted place: add it to the itinerary on the trip's first day, meeting at the nearest
+  // MRT station, tell the group in the chat, then open it so someone can set the times.
+  async function confirmPlace(p) {
+    const days = tripDays(currentProject());
+    const data = {
+      title: p.name, icon: p.icon, placeId: p.id, date: days[0] || '', time: '',
+      ptWhere: nearestStation(p.lat, p.lng), ptTime: '', carWhere: '', carTime: '', notes: '',
+      createdBy: me.uid, createdAt: now(), updatedAt: now(), expireAt: expiry(),
+    };
+    const ref = await col('itinerary').add(data);
+    postMessage({ kind: 'confirmed', placeId: p.id, placeName: p.name, placeIcon: p.icon }).catch(() => {});
+    openItinForm({ id: ref.id, fresh: true, pre: { ...data } });
+    toast(`${p.name} is confirmed. Set the time and where to meet.`);
+  }
+
   let itinForm = null; // null, or { id: stop id or null for a new one, pre: starting values }
   function renderItinerary() {
     const box = $('#itinList');
     box.replaceChildren();
-    if (!itinerary.length && !itinForm) box.append(el('p', { class: 'empty', text: 'Nothing planned yet. Add a stop, or open a place on the map and tap Add to itinerary.' }));
+    // Trip dates at the top; ask for them if they aren't set yet.
+    const proj = currentProject();
+    if (proj) {
+      const setDates = el('button', { class: 'linkbtn', type: 'button', text: proj.startDate ? 'Change' : 'Set trip dates' });
+      setDates.onclick = () => { editingDates = true; showTab('project'); renderProjectCard(); };
+      box.append(el('p', { class: proj.startDate ? 'tripline' : 'tripline missing' },
+        el('span', { text: proj.startDate ? `🗓 ${fmtTrip(proj)}` : '🗓 Set your trip dates so every stop lands on the right day.' }), ' ', setDates));
+    }
+    if (!itinerary.length && !itinForm) box.append(el('p', { class: 'empty', text: 'Nothing planned yet. Once the group votes Yes on a place, open it and tap Confirm location, or add a stop yourself.' }));
     let lastDate = null;
     for (const s of sortStops(itinerary)) {
       if (itinForm && itinForm.id === s.id) continue; // being edited below
@@ -1195,10 +1249,10 @@
       const name = onMap ? el('button', { class: 'linkbtn itinplace', type: 'button', text: s.title }) : el('span', { class: 'itinplace', text: s.title });
       if (onMap) name.onclick = () => select(s.placeId, true);
       const meet = el('div', { class: 'meet' });
+      if (s.ptWhere || s.ptTime) meet.append(el('p', {}, el('span', { class: 'mode', 'aria-hidden': 'true', text: '🚆' }),
+        el('span', {}, el('b', { text: 'Public transport: ' }), `meet at ${s.ptWhere || 'the MRT station'}${s.ptTime ? ` by ${fmtTime(s.ptTime)}` : ' (time to be set)'}`)));
       if (s.carWhere || s.carTime) meet.append(el('p', {}, el('span', { class: 'mode', 'aria-hidden': 'true', text: '🚗' }),
         el('span', {}, el('b', { text: 'Car or motorbike: ' }), `meet at ${s.carWhere || s.title}${s.carTime ? ` by ${fmtTime(s.carTime)}` : ''}`)));
-      if (s.ptWhere || s.ptTime) meet.append(el('p', {}, el('span', { class: 'mode', 'aria-hidden': 'true', text: '🚆' }),
-        el('span', {}, el('b', { text: 'Public transport: ' }), `meet at ${s.ptWhere || 'the MRT station'}${s.ptTime ? ` by ${fmtTime(s.ptTime)}` : ''}`)));
       const edit = el('button', { class: 'msgbtn', type: 'button', text: 'Edit' });
       edit.onclick = () => openItinForm({ id: s.id, pre: s });
       const del = el('button', { class: 'msgbtn', type: 'button', text: 'Delete' });
@@ -1220,51 +1274,76 @@
   }
 
   // Add or edit a stop. pre can hold a placeId (from "Add to itinerary" on a place) or a whole stop.
+  // The date follows the trip dates: fixed for a one-day trip, a list of trip days otherwise.
+  // Public transport is the default way to meet; car or motorbike is an extra, ticked option.
   function openItinForm(opts) {
     itinForm = opts;
     const pre = opts.pre || {};
+    const proj = currentProject();
+    const days = tripDays(proj);
     const place = pre.placeId ? places.find(p => p.id === pre.placeId) : null;
     const box = $('#itinFormBox');
     box.replaceChildren();
     const f = (id, attrs = {}) => el('input', { id, ...attrs });
+
     const placeSel = el('select', { id: 'itPlace', 'aria-label': 'Place' },
       el('option', { value: '', text: 'Somewhere else (type below)' }),
       ...places.map(p => el('option', { value: p.id, text: `${p.icon} ${p.name}` })));
     placeSel.value = place ? place.id : '';
+
+    // Date: fixed for one-day trips, a list of trip days for longer ones, a date picker if no dates are set.
+    let dateCtl;
+    if (days.length === 1) {
+      dateCtl = el('div', {}, el('span', { class: 'fieldlabel', text: 'Date' }), el('p', { class: 'fixeddate', text: fmtDate(days[0]) }), f('itDate', { type: 'hidden', value: days[0] }));
+    } else if (days.length > 1) {
+      const sel = el('select', { id: 'itDate' }, el('option', { value: '', text: 'Not decided yet' }),
+        ...days.map((d, i) => el('option', { value: d, text: `Day ${i + 1}: ${fmtDate(d)}` })));
+      sel.value = days.includes(pre.date) ? pre.date : (opts.id ? '' : days[0]);
+      dateCtl = el('div', {}, el('label', { for: 'itDate', text: 'Date' }), sel);
+    } else {
+      dateCtl = el('div', {}, el('label', { for: 'itDate', text: 'Date' }), f('itDate', { type: 'date' }));
+    }
+
+    const hasCar = !!(pre.carWhere || pre.carTime);
+    const carTick = f('itHasCar', { type: 'checkbox' });
+    carTick.checked = hasCar;
+    const carFields = el('div', { class: 'formrow', id: 'itCarFields' },
+      el('div', {}, el('label', { for: 'itCarWhere', text: 'Meet at' }), f('itCarWhere', { maxlength: '80', placeholder: 'e.g. the restaurant' })),
+      el('div', {}, el('label', { for: 'itCarTime', text: 'By' }), f('itCarTime', { type: 'time' })));
+    carFields.hidden = !hasCar;
+
     const form = el('form', { class: 'form itinform' },
       el('h2', { text: opts.id ? 'Edit stop' : 'Add to itinerary' }),
       el('label', { for: 'itPlace', text: 'Place' }), placeSel,
       el('label', { for: 'itTitle', text: 'Name' }), f('itTitle', { maxlength: '80', required: '', placeholder: 'e.g. Dinner at Zam Zam' }),
-      el('div', { class: 'formrow' },
-        el('div', {}, el('label', { for: 'itDate', text: 'Date' }), f('itDate', { type: 'date' })),
+      el('div', { class: 'formrow' }, dateCtl,
         el('div', {}, el('label', { for: 'itTime', text: 'Time at the place' }), f('itTime', { type: 'time' }))),
       el('p', { class: 'eyebrow', text: 'Where to meet' }),
-      el('p', { class: 'small', text: '🚗 By car or motorbike' }),
-      el('div', { class: 'formrow' },
-        el('div', {}, el('label', { for: 'itCarWhere', text: 'Meet at' }), f('itCarWhere', { maxlength: '80', placeholder: 'e.g. the restaurant' })),
-        el('div', {}, el('label', { for: 'itCarTime', text: 'By' }), f('itCarTime', { type: 'time' }))),
       el('p', { class: 'small', text: '🚆 By public transport' }),
       el('div', { class: 'formrow' },
         el('div', {}, el('label', { for: 'itPtWhere', text: 'Meet at' }), f('itPtWhere', { maxlength: '80', placeholder: 'e.g. Bugis MRT', list: 'itStations' })),
         el('div', {}, el('label', { for: 'itPtTime', text: 'By' }), f('itPtTime', { type: 'time' }))),
       el('datalist', { id: 'itStations' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
       el('p', { class: 'small', id: 'itHint' }),
+      el('label', { class: 'tickrow', for: 'itHasCar' }, carTick, el('span', { text: '🚗 Someone’s coming by car or motorbike' })),
+      carFields,
       el('label', { for: 'itNotes', text: 'Notes (optional)' }), el('textarea', { id: 'itNotes', maxlength: '300', placeholder: 'e.g. Booking under Faz. Bring cash.' }),
       el('p', { class: 'err', id: 'itErr', hidden: '' }),
       el('div', { class: 'factions' }, el('button', { class: 'primary', type: 'submit', text: opts.id ? 'Save' : 'Add' }), el('button', { class: 'ghost', type: 'button', id: 'itCancel', text: 'Cancel' })));
     box.append(form);
 
     $('#itTitle').value = pre.title || (place ? place.name : '');
-    $('#itDate').value = pre.date || '';
+    if (!days.length) $('#itDate').value = pre.date || '';
     $('#itTime').value = pre.time || '';
-    $('#itCarWhere').value = pre.carWhere || (place ? place.name : '');
-    $('#itCarTime').value = pre.carTime || '';
     $('#itPtWhere').value = pre.ptWhere || (place ? nearestStation(place.lat, place.lng) : '');
     $('#itPtTime').value = pre.ptTime || '';
+    $('#itCarWhere').value = pre.carWhere || (place ? place.name : '');
+    $('#itCarTime').value = pre.carTime || '';
     $('#itNotes').value = pre.notes || '';
 
     // Suggestions that follow what you pick, without overwriting anything you've typed yourself.
     const touched = new Set(opts.id ? ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime'] : []);
+    if (opts.fresh) touched.clear(); // a just-confirmed place: times are still suggestions
     for (const id of ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime']) $('#' + id).addEventListener('input', () => touched.add(id));
     const suggest = (id, value) => { if (!touched.has(id)) $('#' + id).value = value; };
     const hint = () => {
@@ -1277,6 +1356,7 @@
       hint();
     };
     $('#itTime').addEventListener('input', () => { const t = $('#itTime').value; suggest('itCarTime', t); suggest('itPtTime', minusMinutes(t, 15)); });
+    carTick.onchange = () => { carFields.hidden = !carTick.checked; };
     hint();
 
     $('#itCancel').onclick = closeItinForm;
@@ -1285,11 +1365,12 @@
       const title = $('#itTitle').value.trim();
       if (!title) { $('#itErr').textContent = 'Give the stop a name.'; $('#itErr').hidden = false; return; }
       const p = places.find(x => x.id === placeSel.value);
+      const car = carTick.checked;
       const data = {
         title: str(title, 80), icon: p ? p.icon : (pre.icon || '📍'), placeId: p ? p.id : null,
         date: ymd($('#itDate').value), time: hhmm($('#itTime').value),
-        carWhere: str($('#itCarWhere').value.trim(), 80), carTime: hhmm($('#itCarTime').value),
         ptWhere: str($('#itPtWhere').value.trim(), 80), ptTime: hhmm($('#itPtTime').value),
+        carWhere: car ? str($('#itCarWhere').value.trim(), 80) : '', carTime: car ? hhmm($('#itCarTime').value) : '',
         notes: str($('#itNotes').value.trim(), 300), updatedAt: now(), expireAt: expiry(),
       };
       const btn = form.querySelector('button[type="submit"]');
@@ -1307,7 +1388,8 @@
     renderItinerary();
     showTab('itin');
     if (narrow()) scrollToEl(box);
-    if (!opts.id && !place) $('#itTitle').focus({ preventScroll: true });
+    if (opts.fresh) $('#itTime').focus({ preventScroll: true });
+    else if (!opts.id && !place) $('#itTitle').focus({ preventScroll: true });
   }
   function closeItinForm() { itinForm = null; $('#itinFormBox').replaceChildren(); renderItinerary(); }
   $('#itinAddBtn').onclick = () => openItinForm({ id: null, pre: {} });
@@ -1398,7 +1480,7 @@
         return {
           id: doc.id, uid: str(x.uid, 128), name: str(x.name, 60), photo: typeof x.photo === 'string' ? x.photo : '',
           createdAt: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now(),
-          kind: ['added', 'rename'].includes(x.kind) ? x.kind : 'text', text: str(x.text, 1000),
+          kind: ['added', 'rename', 'confirmed'].includes(x.kind) ? x.kind : 'text', text: str(x.text, 1000),
           placeId: str(x.placeId, 128), placeName: str(x.placeName, 80), placeIcon: str(x.placeIcon, 2),
           from: str(x.from, 60), to: str(x.to, 60),
           reportedBy: Array.isArray(x.reportedBy) ? x.reportedBy.filter(s => typeof s === 'string') : [],
@@ -1408,7 +1490,7 @@
     }, onDataError));
     unsubscribers.push(col('itinerary').onSnapshot(snap => {
       itinerary = snap.docs.map(cleanStop);
-      renderItinerary();
+      renderAll(); // also refreshes the Confirmed labels on places
     }, onDataError));
     unsubscribers.push(col('reservations').orderBy('createdAt').onSnapshot(snap => {
       reservations = snap.docs.map(doc => {
@@ -1434,7 +1516,8 @@
       return { uid, name: str(m.name, 60) || 'Someone', photo: typeof m.photo === 'string' ? m.photo : '' };
     });
     const lastActiveAt = x.lastActiveAt && x.lastActiveAt.toMillis ? x.lastActiveAt.toMillis() : 0;
-    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members, lastActiveAt };
+    const startDate = ymd(x.startDate), endDate = ymd(x.endDate) || startDate;
+    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members, lastActiveAt, startDate, endDate };
   }
   const myMemberInfo = () => ({ name: me.displayName || null, photo: me.photoURL || '', joinedAt: now() });
 
@@ -1482,7 +1565,7 @@
   function openProject(pid) {
     if (adding) stopAdd();
     projectId = pid;
-    selectedId = null; renaming = false;
+    selectedId = null; renaming = false; editingDates = false;
     // Keep the address bar pointing at this project, so a refresh stays here.
     try { history.replaceState(null, '', `?p=${encodeURIComponent(pid)}`); } catch { /* not allowed here */ }
     assist();
@@ -1529,7 +1612,7 @@
   function closeProject() {
     if (adding) stopAdd();
     projectId = null;
-    selectedId = null; renaming = false;
+    selectedId = null; renaming = false; editingDates = false;
     try { history.replaceState(null, '', location.pathname); } catch { /* not allowed here */ }
     assist();
     stopListening();
@@ -1538,15 +1621,60 @@
     showTab('project');
   }
 
-  async function createProject(name) {
+  async function createProject(name, startDate, endDate) {
     const ref = db.collection('projects').doc();
     await ref.set({
       name: str(name, 60), createdBy: me.uid, createdAt: now(),
       memberIds: [me.uid], members: { [me.uid]: myMemberInfo() },
+      startDate, endDate,
       lastActiveAt: now(), expireAt: expiry(),
     });
     openProject(ref.id);
     toast(`Created ${str(name, 60)}. Send your friends the invite link.`);
+  }
+
+  // ---------- trip dates ----------
+  // A project has a first day and a last day (the same day for a one-day trip).
+  function tripDays(p) {
+    if (!p || !p.startDate) return [];
+    const [y, m, d] = p.startDate.split('-').map(Number);
+    const days = [], end = p.endDate || p.startDate;
+    for (let i = 0; i < 60; i++) {
+      const day = new Date(y, m - 1, d + i);
+      const s = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      if (s > end) break;
+      days.push(s);
+    }
+    return days;
+  }
+  function fmtTrip(p) {
+    const days = tripDays(p);
+    if (!days.length) return 'Dates not set';
+    if (days.length === 1) return `${fmtDate(days[0])} (one day)`;
+    return `${fmtDate(days[0])} – ${fmtDate(days[days.length - 1])} (${days.length} days)`;
+  }
+  // Two date boxes: first day (required) and last day (empty = one-day trip).
+  function dateFields(prefix, start, end) {
+    const first = el('input', { type: 'date', id: prefix + 'Start', required: '', 'aria-label': 'First day' });
+    const last = el('input', { type: 'date', id: prefix + 'End', 'aria-label': 'Last day (optional)' });
+    first.value = start || ''; last.value = end && end !== start ? end : '';
+    first.addEventListener('change', () => { last.min = first.value; });
+    last.min = first.value;
+    return {
+      node: el('div', { class: 'formrow dates' },
+        el('div', {}, el('label', { for: prefix + 'Start', text: 'First day' }), first),
+        el('div', {}, el('label', { for: prefix + 'End', text: 'Last day' }), last),
+        el('p', { class: 'small span2', text: 'Leave the last day empty for a one-day trip.' })),
+      read() {
+        const s = ymd(first.value), e = ymd(last.value);
+        if (!s) return { error: 'Pick the first day of the trip.' };
+        if (e && e < s) return { error: 'The last day can’t be before the first day.' };
+        return { startDate: s, endDate: e || s };
+      },
+    };
+  }
+  async function saveTripDates(p, dates) {
+    await db.collection('projects').doc(p.id).update({ startDate: dates.startDate, endDate: dates.endDate, lastActiveAt: now(), expireAt: expiry() });
   }
 
   async function renameProject(newName) {
@@ -1599,7 +1727,7 @@
     $('#addBtn').hidden = !me || !p;
     renderProjectCard();
     renderAccount();
-    if (p) renderChat(); // owner-only chat controls depend on who owns the project
+    if (p) { renderChat(); renderItinerary(); } // owner controls and trip dates come from the project
   }
   // Project switcher menu (styled to match the app, unlike the browser's own dropdown).
   function renderProjMenu() {
@@ -1641,6 +1769,7 @@
 
   // Project tab: name (rename), people, invite link.
   let renaming = false;
+  let editingDates = false;
   function renderProjectCard() {
     const box = $('#projCard');
     box.replaceChildren();
@@ -1670,6 +1799,28 @@
       const rename = el('button', { class: 'ghost small-btn', type: 'button', text: 'Rename' });
       rename.onclick = () => { renaming = true; renderProjectCard(); };
       box.append(el('div', { class: 'projhead' }, el('h2', { class: 'projname', text: p.name }), rename));
+    }
+
+    box.append(el('p', { class: 'eyebrow', text: 'Trip dates' }));
+    if (editingDates) {
+      const dates = dateFields('pd', p.startDate, p.endDate);
+      const save = el('button', { class: 'primary', type: 'submit', text: 'Save' });
+      const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel' });
+      const form = el('form', { class: 'startform compact' }, dates.node, el('div', { class: 'row2' }, save, cancel));
+      cancel.onclick = () => { editingDates = false; renderProjectCard(); };
+      form.onsubmit = async e => {
+        e.preventDefault();
+        const d = dates.read();
+        if (d.error) { toast(d.error); return; }
+        save.disabled = true;
+        try { await saveTripDates(p, d); editingDates = false; renderProjectCard(); toast('Trip dates saved'); }
+        catch { save.disabled = false; toast("Couldn't save the dates. Try again."); }
+      };
+      box.append(form);
+    } else {
+      const change = el('button', { class: 'ghost small-btn', type: 'button', text: p.startDate ? 'Change' : 'Set dates' });
+      change.onclick = () => { editingDates = true; renderProjectCard(); };
+      box.append(el('div', { class: 'projhead' }, el('span', { class: 'tripdates', text: fmtTrip(p) }), change));
     }
 
     box.append(el('p', { class: 'eyebrow', text: `People (${p.members.length})` }));
@@ -1731,8 +1882,9 @@
       box.className = 'card startcard';
       const input = el('input', { id: 'startName', maxlength: '60', placeholder: 'e.g. Singapore with uni friends', 'aria-label': 'Project name', required: '' });
       const create = el('button', { class: 'primary big', type: 'submit', text: 'Start a project' });
-      const form = el('form', { class: 'startform' }, input, create);
-      form.onsubmit = e => submitNewProject(e, input, create);
+      const dates = dateFields('sp');
+      const form = el('form', { class: 'startform' }, el('label', { for: 'startName', class: 'fieldlabel', text: 'Trip name' }), input, dates.node, create);
+      form.onsubmit = e => submitNewProject(e, input, create, dates);
       box.append(
         el('h2', { text: 'Start a project' }),
         el('p', { text: 'A project is one trip with one group of friends. It has its own map, votes and chat, and only the people you invite can see it.' }),
@@ -1749,6 +1901,7 @@
       if (x.members.length > 4) faces.append(el('span', { class: 'hav more', text: `+${x.members.length - 4}` }));
       const b = el('button', { class: 'projcard', type: 'button' },
         el('span', { class: 'pcname', text: x.name }),
+        el('span', { class: 'pcdates', text: fmtTrip(x) }),
         el('span', { class: 'pcmeta' }, faces, el('span', { class: 'small', text: `${x.members.length} ${x.members.length === 1 ? 'person' : 'people'}` })),
         el('span', { class: 'pcgo', 'aria-hidden': 'true', text: '→' }));
       b.onclick = () => openProject(x.id);
@@ -1820,16 +1973,21 @@
     box.append(note, el('div', { class: 'row2' }, del, cancel));
   }
 
-  async function submitNewProject(e, input, btn) {
+  async function submitNewProject(e, input, btn, dateBox) {
     e.preventDefault();
     const name = input.value.trim();
     if (!name || !me) return;
+    const dates = dateBox.read();
+    if (dates.error) { toast(dates.error); return; }
     btn.disabled = true;
-    try { await createProject(name); input.value = ''; }
+    try { await createProject(name, dates.startDate, dates.endDate); input.value = ''; }
     catch { toast("Couldn't create the project. Try again."); }
     finally { btn.disabled = false; }
   }
-  $('#newProjForm').addEventListener('submit', e => submitNewProject(e, $('#newProjName'), e.target.querySelector('button')));
+  // "Start a new project" (shown under your projects): add the trip date boxes before the button.
+  const newProjDates = dateFields('np');
+  $('#newProjForm').insertBefore(newProjDates.node, $('#newProjForm').querySelector('button'));
+  $('#newProjForm').addEventListener('submit', e => submitNewProject(e, $('#newProjName'), e.target.querySelector('button'), newProjDates));
 
   // ---------- sign-in ----------
   function showGate(text, signedIn) {

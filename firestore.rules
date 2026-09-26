@@ -47,6 +47,11 @@ service cloud.firestore {
           && changed().hasOnly(['name', 'renamedAt', 'lastActiveAt', 'expireAt'])
           && isText(request.resource.data.name, 60) && request.resource.data.name.size() > 0)
         ||
+        // Anyone in the project can change the trip dates (YYYY-MM-DD, or empty).
+        (uid() in members()
+          && changed().hasOnly(['startDate', 'endDate', 'lastActiveAt', 'expireAt'])
+          && isText(request.resource.data.startDate, 10) && isText(request.resource.data.endDate, 10))
+        ||
         // Anyone in the project can mark it as recently used (keeps it from expiring).
         (uid() in members() && changed().hasOnly(['lastActiveAt', 'expireAt']))
         ||
@@ -143,7 +148,8 @@ service cloud.firestore {
       }
 
       // Chat messages: post as yourself only; nobody can edit them.
-      // 'rename' messages are the notices posted when someone renames the project.
+      // 'rename' messages are the notices posted when someone renames the project;
+      // 'confirmed' ones when someone confirms a voted place for the itinerary.
       match /messages/{messageId} {
         allow read: if isMember();
         allow create: if isMember()
@@ -152,6 +158,7 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time
           && ((request.resource.data.kind == 'text' && isText(request.resource.data.text, 1000))
               || request.resource.data.kind == 'added'
+              || request.resource.data.kind == 'confirmed'
               || (request.resource.data.kind == 'rename' && isText(request.resource.data.from, 60) && isText(request.resource.data.to, 60)));
         // Reporting a message: add yourself to its reportedBy list, and change nothing else.
         allow update: if isMember()
