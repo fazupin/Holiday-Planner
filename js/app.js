@@ -77,11 +77,21 @@
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
 
   // ---------- map ----------
-  const map = L.map('map', { zoomControl: false });
+  const map = L.map('map', {
+    zoomControl: false,
+    minZoom: 11,
+    maxZoom: 18,
+    maxBounds: L.latLngBounds(SG_BOUNDS).pad(0.35),
+    maxBoundsViscosity: 0.8,
+  });
   L.control.zoom({ position: 'topright' }).addTo(map);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  // CARTO "Voyager": soft colours and less clutter than the standard OpenStreetMap style.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 18,
+    updateWhenZooming: false,
+    keepBuffer: 4,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map);
   map.fitBounds(SG_BOUNDS);
   const updateLabels = () => $('#map').classList.toggle('show-labels', map.getZoom() >= 15);
