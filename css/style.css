@@ -89,6 +89,28 @@ path.land { fill: var(--land); stroke: var(--land-edge); stroke-width: 2.5px; st
 path.foreign { fill: var(--foreign); stroke: var(--land-edge); stroke-width: 1.5px; stroke-opacity: .5; }
 path.park { fill: var(--park); stroke: none; }
 path.res { fill: var(--sea-in); stroke: none; }
+/* MRT/LRT stations and bus stops */
+.transit { background: none; border: 0; }
+.transit .tsym {
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 5px;
+  background: #FFFFFF; font: 700 11px/1 var(--body);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+.transit.mrt .tsym { border: 2px solid #D42E12; color: #D42E12; }
+.transit.lrt .tsym { border: 2px solid #748477; color: #748477; }
+.transit.bus .tsym { width: 16px; height: 16px; margin: 1px; border-radius: 50%; border: 1.5px solid #2F6FC7; font-size: 9px; }
+.transit .tname {
+  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+  white-space: nowrap; font: 700 11px var(--body); color: #1B2624;
+  text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF;
+  display: none; pointer-events: none;
+}
+.transit.mrt, .transit.lrt { display: none; }
+#map.show-mrt .transit.mrt, #map.show-mrt .transit.lrt { display: block; }
+#map.show-stations .transit .tname { display: block; }
+.leaflet-tooltip { font: 400 12px var(--body); }
+
 .maplabel { background: none; border: 0; pointer-events: none; }
 .maplabel span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: var(--muted); }
 .maplabel.area span { font: 700 10px var(--body); letter-spacing: .16em; opacity: .7; }

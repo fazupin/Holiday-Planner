@@ -45,8 +45,8 @@ To get exact coordinates on a phone: in the Google Maps app, press and hold on t
 ## Built with
 
 - HTML, CSS and JavaScript (no build step)
-- [Leaflet](https://leafletjs.com) for a hand-drawn map of Singapore (no map tiles or API keys)
-- [OpenStreetMap](https://www.openstreetmap.org) place search
+- [Leaflet](https://leafletjs.com) with an [OpenFreeMap](https://openfreemap.org) street map, and a hand-drawn Singapore as a backup (no API keys)
+- [OpenStreetMap](https://www.openstreetmap.org) data for place search, MRT/LRT stations and bus stops
 - [Firebase](https://firebase.google.com) for Google sign-in and the shared database
 
 ## License

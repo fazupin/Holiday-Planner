@@ -77,18 +77,22 @@
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
 
   // ---------- map ----------
-  // A simple hand-drawn Singapore: no map tiles to download, so it's fast and needs no API key.
-  // Coastlines are simplified, so they're close but not exact. Pins still use exact coordinates.
+  // Two layers: a street map from OpenFreeMap (roads, rail lines), and underneath it a simple
+  // hand-drawn Singapore that shows if the street map can't load. Neither needs an API key.
   const map = L.map('map', {
     zoomControl: false,
-    attributionControl: false,
     minZoom: 11,
-    maxZoom: 16,
+    maxZoom: 18,
     zoomSnap: 0.5,
     maxBounds: L.latLngBounds(SG_BOUNDS).pad(0.35),
     maxBoundsViscosity: 0.8,
   });
   L.control.zoom({ position: 'topright' }).addTo(map);
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  map.createPane('base').style.zIndex = 150;     // hand-drawn backup map
+  map.createPane('streets').style.zIndex = 180;  // street map, covers the backup once loaded
+  map.createPane('transit').style.zIndex = 590;  // MRT stations and bus stops, under the place pins
+  const handDrawn = L.layerGroup().addTo(map);
 
   // Outlines as [lng, lat] points, smoothed into curves below.
   const MAINLAND = [[103.607,1.318],[103.618,1.338],[103.640,1.345],[103.662,1.352],[103.680,1.370],[103.690,1.395],[103.700,1.420],[103.715,1.440],[103.735,1.452],[103.757,1.447],[103.770,1.450],[103.790,1.455],[103.810,1.462],[103.827,1.468],[103.840,1.460],[103.855,1.445],[103.870,1.428],[103.885,1.418],[103.900,1.418],[103.915,1.410],[103.935,1.395],[103.955,1.390],[103.975,1.385],[103.995,1.388],[104.015,1.390],[104.032,1.378],[104.040,1.360],[104.030,1.335],[104.005,1.318],[103.975,1.310],[103.945,1.303],[103.915,1.298],[103.890,1.292],[103.872,1.280],[103.864,1.273],[103.850,1.270],[103.838,1.263],[103.822,1.266],[103.805,1.272],[103.790,1.278],[103.770,1.290],[103.745,1.300],[103.725,1.305],[103.705,1.300],[103.680,1.295],[103.655,1.293],[103.630,1.298],[103.612,1.305]];
@@ -125,7 +129,7 @@
     const a = (i / 48) * Math.PI * 2;
     return [lat + Math.sin(a) * ry, lng + Math.cos(a) * rx];
   });
-  const shape = (latlngs, cls) => L.polygon(latlngs, { className: cls, interactive: false, fillOpacity: 1, smoothFactor: 0.5 }).addTo(map);
+  const shape = (latlngs, cls) => L.polygon(latlngs, { pane: 'base', className: cls, interactive: false, fillOpacity: 1, smoothFactor: 0.5 }).addTo(handDrawn);
 
   shape([...smooth(JOHOR_COAST, false), [1.9, 104.4], [1.9, 103.3]], 'foreign');
   shape(smooth(MAINLAND, true), 'land');
@@ -136,12 +140,124 @@
   const mapLabel = (text, lng, lat, cls) => L.marker([lat, lng], {
     interactive: false, keyboard: false, zIndexOffset: -1000,
     icon: L.divIcon({ className: 'maplabel ' + cls, html: `<span>${esc(text)}</span>`, iconSize: null }),
-  }).addTo(map);
+  }).addTo(handDrawn);
   for (const [t, lng, lat] of AREA_LABELS) mapLabel(t, lng, lat, 'area');
   for (const [t, lng, lat] of WATER_LABELS) mapLabel(t, lng, lat, 'water');
 
   map.fitBounds(SG_BOUNDS);
-  const updateLabels = () => $('#map').classList.toggle('show-labels', map.getZoom() >= 14);
+
+  // Street map (OpenFreeMap vector tiles), recoloured to match the app and with shop/restaurant
+  // icons hidden. If it hasn't loaded after 12 seconds, remove it and keep the hand-drawn map.
+  const PALETTE = { land: '#FBF6E4', water: '#BFE3EC', park: '#D5EBC0' };
+  function restyleStreets(gl) {
+    for (const layer of gl.getStyle().layers) {
+      const src = layer['source-layer'];
+      try {
+        if (['poi', 'housenumber', 'mountain_peak', 'aerodrome_label'].includes(src)) gl.setLayoutProperty(layer.id, 'visibility', 'none');
+        else if (layer.type === 'background') gl.setPaintProperty(layer.id, 'background-color', PALETTE.land);
+        else if (layer.type === 'fill' && src === 'water') gl.setPaintProperty(layer.id, 'fill-color', PALETTE.water);
+        else if (layer.type === 'fill' && (src === 'park' || src === 'landcover')) gl.setPaintProperty(layer.id, 'fill-color', PALETTE.park);
+        else if (layer.type === 'fill' && src === 'building') gl.setPaintProperty(layer.id, 'fill-opacity', 0.35);
+      } catch { /* a layer this style doesn't have; skip it */ }
+    }
+  }
+  function addStreetMap() {
+    if (typeof L.maplibreGL !== 'function' || !window.maplibregl) return; // library didn't load: keep hand-drawn map
+    const streets = L.maplibreGL({
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      pane: 'streets',
+      interactive: false,
+      attribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    }).addTo(map);
+    let ready = false;
+    const giveUp = setTimeout(() => { if (!ready) map.removeLayer(streets); }, 12000);
+    const gl = streets.getMaplibreMap();
+    gl.once('load', () => {
+      ready = true; clearTimeout(giveUp);
+      restyleStreets(gl);
+      map.removeLayer(handDrawn);
+      $('#mapwrap').classList.add('has-streets');
+    });
+  }
+  try { addStreetMap(); } catch { /* keep the hand-drawn map */ }
+
+  // ---------- MRT stations and bus stops (OpenStreetMap data via Overpass, free, no key) ----------
+  const OVERPASS = 'https://overpass-api.de/api/interpreter';
+  async function overpass(query) {
+    const r = await fetch(OVERPASS, { method: 'POST', body: new URLSearchParams({ data: query }) });
+    if (!r.ok) throw new Error('overpass ' + r.status);
+    return (await r.json()).elements || [];
+  }
+  const cacheGet = (key, maxAgeMs) => {
+    try { const c = JSON.parse(localStorage.getItem(key) || 'null'); return c && Date.now() - c.at < maxAgeMs ? c.data : null; } catch { return null; }
+  };
+  const cacheSet = (key, data) => { try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* storage full or blocked */ } };
+
+  const mrtLayer = L.layerGroup().addTo(map);
+  const busLayer = L.layerGroup().addTo(map);
+  const transitIcon = (cls, symbol, label) => L.divIcon({
+    className: 'transit ' + cls,
+    html: `<span class="tsym">${symbol}</span>${label ? `<span class="tname">${esc(label)}</span>` : ''}`,
+    iconSize: [18, 18], iconAnchor: [9, 9],
+  });
+
+  async function loadMrt() {
+    let stations = cacheGet('wanderly-mrt-v1', 7 * 864e5);
+    if (!stations) {
+      const els = await overpass(`[out:json][timeout:25];
+        (node["railway"="station"]["station"~"subway|light_rail"](1.15,103.6,1.48,104.1);
+         node["public_transport"="station"]["subway"="yes"](1.15,103.6,1.48,104.1););
+        out body;`);
+      const seen = new Set();
+      stations = [];
+      for (const e of els) {
+        const t = e.tags || {};
+        const name = str(t['name:en'] || t.name || '', 60).replace(/ (MRT|LRT) Station$/i, '');
+        if (!name || seen.has(name) || !isFinite(e.lat)) continue;
+        seen.add(name);
+        stations.push({ name, lat: e.lat, lng: e.lon, lrt: t.station === 'light_rail', code: str(t.ref || '', 30).replace(/;/g, ' / ') });
+      }
+      if (stations.length) cacheSet('wanderly-mrt-v1', stations);
+    }
+    for (const s of stations) {
+      L.marker([s.lat, s.lng], {
+        pane: 'transit', keyboard: false,
+        title: `${s.name} ${s.lrt ? 'LRT' : 'MRT'}${s.code ? ' (' + s.code + ')' : ''}`,
+        icon: transitIcon(s.lrt ? 'lrt' : 'mrt', 'M', s.name),
+      }).bindTooltip(`${esc(s.name)} ${s.lrt ? 'LRT' : 'MRT'}${s.code ? '<br><small>' + esc(s.code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
+        .addTo(mrtLayer);
+    }
+  }
+  loadMrt().catch(() => { /* stations are a nice-to-have */ });
+
+  // Bus stops only show when zoomed in close, and load for the area on screen.
+  const BUS_ZOOM = 16;
+  let busBounds = null, busTimer = 0, busSeq = 0;
+  async function loadBusStops() {
+    if (map.getZoom() < BUS_ZOOM) { busLayer.clearLayers(); busBounds = null; return; }
+    const view = map.getBounds();
+    if (busBounds && busBounds.contains(view)) return;
+    const b = view.pad(0.5), seq = ++busSeq;
+    const els = await overpass(`[out:json][timeout:20];node["highway"="bus_stop"](${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()});out body;`);
+    if (seq !== busSeq) return;
+    busLayer.clearLayers();
+    busBounds = b;
+    for (const e of els.slice(0, 400)) {
+      const t = e.tags || {};
+      const name = str(t.name || 'Bus stop', 60), code = str(t.asset_ref || t.ref || '', 10);
+      L.marker([e.lat, e.lon], { pane: 'transit', keyboard: false, title: name, icon: transitIcon('bus', '🚌', '') })
+        .bindTooltip(`${esc(name)}${code ? '<br><small>Stop ' + esc(code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
+        .addTo(busLayer);
+    }
+  }
+  map.on('moveend', () => { clearTimeout(busTimer); busTimer = setTimeout(() => loadBusStops().catch(() => {}), 500); });
+
+  const updateLabels = () => {
+    const z = map.getZoom();
+    $('#map').classList.toggle('show-labels', z >= 14);
+    $('#map').classList.toggle('show-stations', z >= 13);
+    $('#map').classList.toggle('show-mrt', z >= 12);
+  };
   map.on('zoomend', updateLabels);
   updateLabels();
   map.on('click', e => handleMapClick(e.latlng));
