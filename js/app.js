@@ -452,7 +452,7 @@
   const updateLabels = () => {
     const z = map.getZoom();
     $('#map').classList.toggle('show-labels', z >= 14);
-    $('#map').classList.toggle('show-stations', z >= 13.5);
+    $('#map').classList.toggle('show-stations', z >= 15.5); // names only when zoomed right in, so they don't crowd
   };
   map.on('zoomend', updateLabels);
   updateLabels();
