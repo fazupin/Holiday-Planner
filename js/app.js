@@ -77,24 +77,71 @@
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
 
   // ---------- map ----------
+  // A simple hand-drawn Singapore: no map tiles to download, so it's fast and needs no API key.
+  // Coastlines are simplified, so they're close but not exact. Pins still use exact coordinates.
   const map = L.map('map', {
     zoomControl: false,
+    attributionControl: false,
     minZoom: 11,
-    maxZoom: 18,
+    maxZoom: 16,
+    zoomSnap: 0.5,
     maxBounds: L.latLngBounds(SG_BOUNDS).pad(0.35),
     maxBoundsViscosity: 0.8,
   });
   L.control.zoom({ position: 'topright' }).addTo(map);
-  // CARTO "Voyager": soft colours and less clutter than the standard OpenStreetMap style.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd',
-    maxZoom: 18,
-    updateWhenZooming: false,
-    keepBuffer: 4,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+
+  // Outlines as [lng, lat] points, smoothed into curves below.
+  const MAINLAND = [[103.607,1.318],[103.618,1.338],[103.640,1.345],[103.662,1.352],[103.680,1.370],[103.690,1.395],[103.700,1.420],[103.715,1.440],[103.735,1.452],[103.757,1.447],[103.770,1.450],[103.790,1.455],[103.810,1.462],[103.827,1.468],[103.840,1.460],[103.855,1.445],[103.870,1.428],[103.885,1.418],[103.900,1.418],[103.915,1.410],[103.935,1.395],[103.955,1.390],[103.975,1.385],[103.995,1.388],[104.015,1.390],[104.032,1.378],[104.040,1.360],[104.030,1.335],[104.005,1.318],[103.975,1.310],[103.945,1.303],[103.915,1.298],[103.890,1.292],[103.872,1.280],[103.864,1.273],[103.850,1.270],[103.838,1.263],[103.822,1.266],[103.805,1.272],[103.790,1.278],[103.770,1.290],[103.745,1.300],[103.725,1.305],[103.705,1.300],[103.680,1.295],[103.655,1.293],[103.630,1.298],[103.612,1.305]];
+  const ISLANDS = [
+    [[103.805,1.255],[103.815,1.259],[103.830,1.257],[103.843,1.252],[103.848,1.246],[103.838,1.243],[103.822,1.245],[103.808,1.248]], // Sentosa
+    [[103.665,1.285],[103.690,1.290],[103.715,1.288],[103.725,1.275],[103.712,1.255],[103.690,1.250],[103.672,1.262]],               // Jurong Island
+    [[103.935,1.412],[103.955,1.420],[103.975,1.418],[103.990,1.412],[103.982,1.402],[103.960,1.401],[103.940,1.404]],               // Pulau Ubin
+    [[104.020,1.410],[104.045,1.419],[104.066,1.411],[104.060,1.395],[104.035,1.392]],                                               // Pulau Tekong
+  ];
+  const JOHOR_COAST = [[103.50,1.335],[103.59,1.345],[103.61,1.35],[103.63,1.36],[103.65,1.375],[103.665,1.395],[103.68,1.42],[103.695,1.44],[103.71,1.452],[103.73,1.462],[103.75,1.465],[103.77,1.462],[103.79,1.468],[103.82,1.478],[103.84,1.478],[103.86,1.475],[103.89,1.46],[103.92,1.45],[103.95,1.44],[103.99,1.435],[104.03,1.44],[104.06,1.435],[104.10,1.43],[104.20,1.43]];
+  const MARINA_BAY = [[103.852,1.289],[103.856,1.2915],[103.8595,1.288],[103.859,1.2848],[103.855,1.2838],[103.8515,1.2852]];
+  const RESERVOIRS = [[103.822,1.343,.008,.0035],[103.806,1.373,.006,.004],[103.800,1.402,.012,.005],[103.735,1.428,.010,.005],[103.855,1.407,.006,.003],[103.925,1.340,.007,.0028]]; // lng, lat, x-radius, y-radius
+  const PARKS = [[103.803,1.372,.032,.04]];
+  const AREA_LABELS = [['WOODLANDS',103.786,1.438],['JURONG',103.720,1.340],['TAMPINES',103.945,1.357],['ANG MO KIO',103.848,1.372],['PUNGGOL',103.905,1.403],['TUAS',103.640,1.318],['BUKIT TIMAH',103.776,1.338],['CHANGI',104.012,1.338],['CITY',103.848,1.296]];
+  const WATER_LABELS = [['Singapore Strait',103.94,1.262],['Johor, Malaysia',103.70,1.492],['Jurong Island',103.695,1.243],['Pulau Tekong',104.045,1.386]];
+
+  // Catmull-Rom smoothing: turns a few points into a gentle curve. Returns [lat, lng] pairs.
+  function smooth(pts, closed, steps = 8) {
+    const n = pts.length, out = [];
+    const at = i => (closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))]);
+    const last = closed ? n : n - 1;
+    for (let i = 0; i < last; i++) {
+      const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps, t2 = t * t, t3 = t2 * t;
+        const f = k => 0.5 * (2 * p1[k] + (p2[k] - p0[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t3);
+        out.push([f(1), f(0)]);
+      }
+    }
+    if (!closed) out.push([pts[n - 1][1], pts[n - 1][0]]);
+    return out;
+  }
+  const ellipse = (lng, lat, rx, ry) => Array.from({ length: 48 }, (_, i) => {
+    const a = (i / 48) * Math.PI * 2;
+    return [lat + Math.sin(a) * ry, lng + Math.cos(a) * rx];
+  });
+  const shape = (latlngs, cls) => L.polygon(latlngs, { className: cls, interactive: false, fillOpacity: 1, smoothFactor: 0.5 }).addTo(map);
+
+  shape([...smooth(JOHOR_COAST, false), [1.9, 104.4], [1.9, 103.3]], 'foreign');
+  shape(smooth(MAINLAND, true), 'land');
+  for (const isle of ISLANDS) shape(smooth(isle, true), 'land');
+  for (const [lng, lat, rx, ry] of PARKS) shape(ellipse(lng, lat, rx, ry), 'park');
+  for (const [lng, lat, rx, ry] of RESERVOIRS) shape(ellipse(lng, lat, rx, ry), 'res');
+  shape(smooth(MARINA_BAY, true), 'res');
+  const mapLabel = (text, lng, lat, cls) => L.marker([lat, lng], {
+    interactive: false, keyboard: false, zIndexOffset: -1000,
+    icon: L.divIcon({ className: 'maplabel ' + cls, html: `<span>${esc(text)}</span>`, iconSize: null }),
   }).addTo(map);
+  for (const [t, lng, lat] of AREA_LABELS) mapLabel(t, lng, lat, 'area');
+  for (const [t, lng, lat] of WATER_LABELS) mapLabel(t, lng, lat, 'water');
+
   map.fitBounds(SG_BOUNDS);
-  const updateLabels = () => $('#map').classList.toggle('show-labels', map.getZoom() >= 15);
+  const updateLabels = () => $('#map').classList.toggle('show-labels', map.getZoom() >= 14);
   map.on('zoomend', updateLabels);
   updateLabels();
   map.on('click', e => handleMapClick(e.latlng));

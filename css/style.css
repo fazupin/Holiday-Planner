@@ -10,6 +10,12 @@
   --yes: #23794B;
   --no: #C23B4F;
   --shadow: 0 1px 2px rgba(20, 40, 35, .08), 0 4px 14px rgba(20, 40, 35, .08);
+  --sea: #BFE3EC;
+  --sea-in: #9FD2E0;
+  --land: #FBF6E4;
+  --land-edge: #6FA9A0;
+  --park: #CDE8B5;
+  --foreign: #E8E6D8;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
@@ -28,6 +34,12 @@
     --yes: #62C891;
     --no: #F07C8B;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .3);
+    --sea: #13303A;
+    --sea-in: #1C4652;
+    --land: #28352F;
+    --land-edge: #5E9A90;
+    --park: #2F4A33;
+    --foreign: #1E2724;
     color-scheme: dark;
   }
 }
@@ -72,6 +84,15 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3vw, 
 /* ---------- map ---------- */
 .mapwrap { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); min-height: 0; background: var(--card); }
 #map { position: absolute; inset: 0; font-family: var(--body); }
+.leaflet-container { background: var(--sea); }
+path.land { fill: var(--land); stroke: var(--land-edge); stroke-width: 2.5px; stroke-linejoin: round; }
+path.foreign { fill: var(--foreign); stroke: var(--land-edge); stroke-width: 1.5px; stroke-opacity: .5; }
+path.park { fill: var(--park); stroke: none; }
+path.res { fill: var(--sea-in); stroke: none; }
+.maplabel { background: none; border: 0; pointer-events: none; }
+.maplabel span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: var(--muted); }
+.maplabel.area span { font: 700 10px var(--body); letter-spacing: .16em; opacity: .7; }
+.maplabel.water span { font: italic 400 12px var(--body); letter-spacing: .06em; opacity: .75; }
 .mapwrap.adding .leaflet-container { cursor: crosshair; }
 .mbtn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px; box-shadow: var(--shadow); }
 .addbtn { position: absolute; top: 12px; left: 12px; z-index: 1000; padding: 8px 14px; font-weight: 700; background: var(--accent); color: var(--on-accent); border-color: transparent; }
