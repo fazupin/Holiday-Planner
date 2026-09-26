@@ -173,8 +173,15 @@ path.res { fill: var(--sea-in); stroke: none; }
 .chips img { width: 20px; height: 20px; border-radius: 50%; flex: none; }
 .chips span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chips .none { color: var(--muted); }
-.rm { margin-top: 14px; background: none; border: 0; color: var(--muted); font-size: 13px; padding: 0; text-decoration: underline; }
-.rm.armed { color: var(--no); font-weight: 700; }
+.danger { background: none; border: 1.5px solid var(--no); color: var(--no); border-radius: 10px; padding: 7px 14px; font-weight: 700; font-size: 13px; }
+.danger:hover, .danger.armed { background: var(--no); color: var(--card); }
+.danger:disabled { opacity: .6; cursor: wait; }
+.row2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row2 .ghost { padding: 7px 14px; font-size: 13px; }
+.delrow { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.delrow .small:empty { display: none; }
+.bulk { display: flex; flex-direction: column; gap: 6px; }
+.bulk:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 
 .rank h3 { font-family: var(--display); font-weight: 700; font-size: 16px; margin: 0 0 8px; }
 .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }

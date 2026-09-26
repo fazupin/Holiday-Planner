@@ -10,15 +10,23 @@ service cloud.firestore {
     //   function guestList() { return ['you@gmail.com', 'friend@gmail.com']; }
     function guestList() { return []; }
 
+    // Organisers can delete any place. Keep this list the same as
+    // WANDERLY_ORGANISERS in js/firebase-config.js.
+    function organisers() { return ['zulfazlin.upin09@gmail.com']; }
+
     function signedIn() { return request.auth != null; }
     function allowed() {
       return signedIn() && (guestList().size() == 0 || request.auth.token.email in guestList());
+    }
+    function isOrganiser() {
+      return allowed() && request.auth.token.email_verified == true && request.auth.token.email in organisers();
     }
     function isText(v, max) { return v is string && v.size() <= max; }
     function myName() { return request.auth.token.name; }
 
     // Places on the map. Anyone allowed can add one; only the person who
-    // added a place can change or remove it.
+    // added a place can change it. The person who added it, or an
+    // organiser, can delete it.
     match /places/{placeId} {
       allow read: if allowed();
       allow create: if allowed()
@@ -36,7 +44,7 @@ service cloud.firestore {
       allow update: if allowed()
         && resource.data.addedBy == request.auth.uid
         && request.resource.data.addedBy == resource.data.addedBy;
-      allow delete: if allowed() && resource.data.addedBy == request.auth.uid;
+      allow delete: if (allowed() && resource.data.addedBy == request.auth.uid) || isOrganiser();
     }
 
     // One ballot per person, stored under their own user id.

@@ -75,6 +75,9 @@
     db = firebase.firestore();
   }
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
+  const ORGANISERS = (window.WANDERLY_ORGANISERS || []).map(e => String(e).toLowerCase());
+  const isOrganiser = () => !!(me && me.email && ORGANISERS.includes(me.email.toLowerCase()));
+  const canDelete = p => !!me && (p.addedBy === me.uid || isOrganiser());
 
   // ---------- map ----------
   // A simple hand-drawn Singapore: no map tiles to download, so it's fast and needs no API key.
@@ -474,17 +477,64 @@
         el('div', {}, el('h4', { class: 'yh', text: `Yes · ${t.yes.length}` }), voterList(t.yes)),
         el('div', {}, el('h4', { class: 'nh', text: `No · ${t.no.length}` }), voterList(t.no))));
 
-    if (me && p.addedBy === me.uid) {
-      const rm = el('button', { class: 'rm', type: 'button', text: 'Remove this place' });
+    if (canDelete(p)) {
+      const del = el('button', { class: 'danger', type: 'button', text: 'Delete place' });
+      const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel', hidden: '' });
+      const ask = el('span', { class: 'small', text: '' });
       let armed = false;
-      rm.onclick = async () => {
-        if (!armed) { armed = true; rm.classList.add('armed'); rm.textContent = 'Tap again to remove it for everyone'; return; }
-        rm.disabled = true;
-        try { await db.collection('places').doc(p.id).delete(); selectedId = null; renderAll(); toast(`Removed ${p.name}`); }
-        catch { rm.disabled = false; toast("Couldn't remove the place. Try again."); }
+      const disarm = () => { armed = false; del.textContent = 'Delete place'; del.classList.remove('armed'); cancel.hidden = true; ask.textContent = ''; };
+      cancel.onclick = disarm;
+      del.onclick = async () => {
+        if (!armed) {
+          armed = true; del.classList.add('armed'); del.textContent = 'Yes, delete it'; cancel.hidden = false;
+          ask.textContent = `This removes ${p.name} and its votes for everyone.`;
+          return;
+        }
+        del.disabled = true; cancel.hidden = true;
+        try {
+          await db.collection('places').doc(p.id).delete();
+          selectedId = null; renderAll(); toast(`Deleted ${p.name}`);
+        } catch (x) {
+          del.disabled = false; disarm();
+          toast(x && x.code === 'permission-denied' ? "You can only delete places you added." : "Couldn't delete the place. Try again.");
+        }
       };
-      box.append(rm);
+      box.append(el('div', { class: 'delrow' }, ask, el('div', { class: 'row2' }, del, cancel)));
     }
+  }
+
+  // Organisers only: delete every place with more No votes than Yes.
+  let bulkArmed = false;
+  function renderBulk() {
+    const box = $('#bulk');
+    box.replaceChildren();
+    if (!isOrganiser()) return;
+    const rejected = places.filter(p => { const t = tally(p.id); return t.no.length > t.yes.length; });
+    if (!rejected.length) { bulkArmed = false; return; }
+    const names = rejected.map(p => p.name).join(', ');
+    if (!bulkArmed) {
+      const b = el('button', { class: 'danger', type: 'button', text: `Delete places voted No (${rejected.length})` });
+      b.onclick = () => { bulkArmed = true; renderBulk(); };
+      box.append(b, el('p', { class: 'small', text: 'Places with more No votes than Yes.' }));
+      return;
+    }
+    const yes = el('button', { class: 'danger armed', type: 'button', text: `Yes, delete ${rejected.length}` });
+    const no = el('button', { class: 'ghost', type: 'button', text: 'Cancel' });
+    no.onclick = () => { bulkArmed = false; renderBulk(); };
+    yes.onclick = async () => {
+      yes.disabled = no.disabled = true; yes.textContent = 'Deleting…';
+      try {
+        const batch = db.batch();
+        for (const p of rejected) batch.delete(db.collection('places').doc(p.id));
+        await batch.commit();
+        bulkArmed = false;
+        toast(`Deleted ${rejected.length} place${rejected.length === 1 ? '' : 's'}`);
+      } catch (x) {
+        bulkArmed = false; renderBulk();
+        toast(x && x.code === 'permission-denied' ? 'Only organisers can do this. Check the organiser email in the Firebase rules.' : "Couldn't delete the places. Try again.");
+      }
+    };
+    box.append(el('p', { class: 'small', text: `Delete ${names} for everyone?` }), el('div', { class: 'row2' }, yes, no));
   }
 
   function renderRows() {
@@ -516,7 +566,7 @@
 
   function renderAll() {
     if (selectedId && !places.some(p => p.id === selectedId)) selectedId = null;
-    renderPins(); renderRows(); renderStats(); renderDetail();
+    renderPins(); renderRows(); renderStats(); renderDetail(); renderBulk();
   }
 
   // ---------- tabs ----------
