@@ -2,18 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wanderly – Holiday Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Wanderly – Singapore Trip Picks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header>
-    <h1>Wanderly 🌴</h1>
-    <p>Plan trips day by day, keep bookings in one place, and stay on budget.</p>
-  </header>
+  <div class="app">
+    <header class="top">
+      <div>
+        <p class="brand">Wanderly</p>
+        <h1>Singapore Trip Picks</h1>
+        <p class="sub">Suggest places in the chat, tap a pin to see what's there, then vote on where to go.</p>
+      </div>
+      <div class="stats">
+        <span><b id="nPlaces">0</b> places</span>
+        <span><b id="nVoters">0</b> people voted</span>
+        <span class="me" id="me" hidden>
+          <img id="meAvatar" alt="" referrerpolicy="no-referrer">
+          <span id="meName"></span>
+          <button type="button" class="linkbtn" id="signOut">Sign out</button>
+        </span>
+      </div>
+    </header>
 
-  <main id="app"></main>
+    <div class="main">
+      <div class="mapwrap" id="mapwrap">
+        <div id="map" aria-label="Map of Singapore with places to vote on"></div>
+        <button class="mbtn addbtn" id="addBtn" type="button" hidden>+ Add a place</button>
+        <div class="hint" id="hint" hidden>Tap the map where the place is</div>
+      </div>
 
+      <aside class="panel">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tabVote" aria-selected="true" aria-controls="paneVote" type="button">Places &amp; votes</button>
+          <button role="tab" id="tabChat" aria-selected="false" aria-controls="paneChat" type="button">Chat <span class="unread" id="unread" hidden></span></button>
+        </div>
+        <div class="pane" id="paneVote" role="tabpanel" aria-labelledby="tabVote">
+          <section class="card" id="detail" aria-live="polite"></section>
+          <section class="card rank">
+            <h3>Ranked by votes</h3>
+            <ul class="rows" id="rows"></ul>
+          </section>
+        </div>
+        <div class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
+          <section class="card chatcard">
+            <ol class="msgs" id="msgs" aria-live="polite"></ol>
+            <div class="assist" id="assist" hidden></div>
+            <form class="composer" id="composer">
+              <textarea id="cInput" rows="1" maxlength="1000" aria-label="Message" placeholder="Paste a Google Maps link, coordinates or a place name"></textarea>
+              <button class="primary" type="submit" id="cSend">Send</button>
+            </form>
+            <p class="chatfoot">For an exact pin: in Google Maps, press and hold on the place, then copy the numbers at the top (like 1.28473, 103.83251) and paste them here. Place search by OpenStreetMap.</p>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="gate" id="gate">
+    <div class="gatecard">
+      <p class="brand">Wanderly</p>
+      <h2>Singapore Trip Picks</h2>
+      <p id="gateText">Sign in with your Google account to see the places and vote.</p>
+      <button type="button" class="primary big" id="signIn">Sign in with Google</button>
+      <p class="err" id="gateErr" hidden></p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

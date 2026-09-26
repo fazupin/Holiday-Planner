@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// Paste this whole file into Firebase: Firestore Database > Rules > Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Who can use the app.
+    // Empty list: anyone who has the link and signs in with Google can join.
+    // To lock it to your friends, list their Google emails, for example:
+    //   function guestList() { return ['you@gmail.com', 'friend@gmail.com']; }
+    function guestList() { return []; }
+
+    function signedIn() { return request.auth != null; }
+    function allowed() {
+      return signedIn() && (guestList().size() == 0 || request.auth.token.email in guestList());
+    }
+    function isText(v, max) { return v is string && v.size() <= max; }
+    function myName() { return request.auth.token.name; }
+
+    // Places on the map. Anyone allowed can add one; only the person who
+    // added a place can change or remove it.
+    match /places/{placeId} {
+      allow read: if allowed();
+      allow create: if allowed()
+        && request.resource.data.addedBy == request.auth.uid
+        && request.resource.data.addedByName == myName()
+        && isText(request.resource.data.name, 80) && request.resource.data.name.size() > 0
+        && isText(request.resource.data.icon, 8)
+        && isText(request.resource.data.area, 60)
+        && isText(request.resource.data.blurb, 300)
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() <= 12
+        && request.resource.data.lat is number && request.resource.data.lng is number
+        && request.resource.data.lat > 1.1 && request.resource.data.lat < 1.5
+        && request.resource.data.lng > 103.5 && request.resource.data.lng < 104.2;
+      allow update: if allowed()
+        && resource.data.addedBy == request.auth.uid
+        && request.resource.data.addedBy == resource.data.addedBy;
+      allow delete: if allowed() && resource.data.addedBy == request.auth.uid;
+    }
+
+    // One ballot per person, stored under their own user id.
+    // Everyone can see the votes; you can only change your own.
+    match /votes/{uid} {
+      allow read: if allowed();
+      allow create, update: if allowed()
+        && request.auth.uid == uid
+        && request.resource.data.votes is map
+        && request.resource.data.name == myName();
+      allow delete: if allowed() && request.auth.uid == uid;
+    }
+
+    // Chat messages: post as yourself only; nobody can edit or delete them.
+    match /messages/{messageId} {
+      allow read: if allowed();
+      allow create: if allowed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name == myName()
+        && request.resource.data.createdAt == request.time
+        && ((request.resource.data.kind == 'text' && isText(request.resource.data.text, 1000))
+            || request.resource.data.kind == 'added');
+    }
+  }
+}

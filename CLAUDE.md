@@ -10,4 +10,4 @@
 
 ## Project
 
-Wanderly is a plain HTML/CSS/JS holiday planner with no build step. Open `index.html` in a browser to run it.
+Wanderly is a plain HTML/CSS/JS group trip planner with no build step: friends suggest Singapore places, then vote on them. It uses Leaflet + OpenStreetMap for the map and Firebase for Google sign-in and shared data (see `SETUP.md`). Google sign-in doesn't work from `file://`, so run it from GitHub Pages or a local web server (e.g. `python -m http.server 8000`).

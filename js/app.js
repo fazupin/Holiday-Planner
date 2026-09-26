@@ -1,5 +1,758 @@
-// Wanderly – app entry point
-document.addEventListener('DOMContentLoaded', () => {
-  const app = document.getElementById('app');
-  // TODO: itinerary builder, budget tracker, packing checklist
-});
+// Wanderly – Singapore Trip Picks
+// Friends suggest places in a shared chat, then vote yes or no on each one.
+// Map: Leaflet + OpenStreetMap. Sign-in and shared data: Firebase (see SETUP.md).
+(() => {
+  'use strict';
+
+  // ---------- helpers ----------
+  const $ = s => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const k in attrs) {
+      if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'class') e.className = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) e.append(c);
+    return e;
+  };
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const str = (v, n) => Array.from(String(v == null ? '' : v)).slice(0, n).join('');
+  const narrow = () => matchMedia('(max-width: 860px)').matches;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const scrollToEl = node => node.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+
+  const SG_BOUNDS = [[1.205, 103.60], [1.475, 104.05]];
+  const inSingapore = (lat, lng) => lat > 1.15 && lat < 1.49 && lng > 103.58 && lng < 104.10;
+  const coordText = (lat, lng) => `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E`;
+
+  let toastTimer = 0;
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 4200);
+  }
+
+  // ---------- starter places (added with one tap when the map is empty) ----------
+  const STARTERS = [
+    { name: 'Marina Bay Sands', icon: '🏨', area: 'Marina Bay', mrt: 'Bayfront MRT (CE1 / DT16)', lat: 1.2834, lng: 103.8607,
+      blurb: 'The three towers with the ship on top. Best skyline views in the city.',
+      activities: ['SkyPark Observation Deck at sunset', 'Spectra light and water show on the bay (free, nightly from 8pm)', 'ArtScience Museum', 'Sampan boat ride along the canal inside the Shoppes'] },
+    { name: 'Gardens by the Bay', icon: '🌳', area: 'Marina Bay', mrt: 'Gardens by the Bay MRT (TE22)', lat: 1.2816, lng: 103.8636,
+      blurb: 'Giant Supertrees and two huge glass domes right next to Marina Bay Sands.',
+      activities: ['Walk the OCBC Skyway between the Supertrees', 'Cloud Forest dome and its indoor waterfall', 'Flower Dome', 'Garden Rhapsody light show (free, 7:45pm and 8:45pm)'] },
+    { name: 'Sentosa', icon: '🏖️', area: 'Sentosa Island', mrt: 'HarbourFront MRT, then Sentosa Express', lat: 1.2494, lng: 103.8303,
+      blurb: 'The island resort: theme park, aquarium and beaches in one day.',
+      activities: ['Universal Studios Singapore', 'S.E.A. Aquarium', 'Siloso Beach', 'Cable car from Mount Faber'] },
+    { name: 'Chinatown', icon: '🏮', area: 'Outram', mrt: 'Chinatown MRT (NE4 / DT19)', lat: 1.2836, lng: 103.8443,
+      blurb: 'Temples, shophouses and some of the best hawker food in Singapore.',
+      activities: ['Chicken rice at Maxwell Food Centre', 'Buddha Tooth Relic Temple', 'Chinatown Street Market', 'Drinks on Ann Siang Hill'] },
+    { name: 'Singapore Zoo & Night Safari', icon: '🦒', area: 'Mandai', mrt: 'Khatib MRT, then Mandai shuttle', lat: 1.4043, lng: 103.7930,
+      blurb: 'Four wildlife parks side by side in the rainforest by Upper Seletar Reservoir.',
+      activities: ['Singapore Zoo', 'Night Safari tram ride', 'Bird Paradise', 'River Wonders'] },
+    { name: 'Jewel Changi Airport', icon: '💧', area: 'Changi', mrt: 'Changi Airport MRT (CG2)', lat: 1.3602, lng: 103.9894,
+      blurb: "The world's tallest indoor waterfall. Easy to do on arrival or before the flight home.",
+      activities: ['HSBC Rain Vortex waterfall', 'Canopy Park and the hedge maze', 'Shiseido Forest Valley walking trail', 'Food and shopping'] },
+    { name: 'Kampong Glam', icon: '🕌', area: 'Bugis', mrt: 'Bugis MRT (EW12 / DT14)', lat: 1.3023, lng: 103.8589,
+      blurb: 'Colourful lanes around Sultan Mosque, full of indie shops, murals and cafés.',
+      activities: ['Haji Lane murals and boutiques', 'Sultan Mosque', 'Textile shops on Arab Street', 'Murtabak on North Bridge Road'] },
+    { name: 'Pulau Ubin', icon: '🚲', area: 'Off Changi', mrt: 'Bumboat from Changi Point Ferry Terminal', lat: 1.4044, lng: 103.9625,
+      blurb: 'A quiet island that feels like 1960s Singapore. Rent bikes and explore.',
+      activities: ['Cycle around the island', 'Chek Jawa Wetlands boardwalk', 'Bumboat ride from Changi Point', 'Seafood lunch in the village'] },
+    { name: 'East Coast Park', icon: '🦀', area: 'Marine Parade', mrt: 'Marine Parade MRT (TE26)', lat: 1.3008, lng: 103.9122,
+      blurb: 'A long seaside park. Cycle by day and eat chilli crab at night.',
+      activities: ['Rent bikes and ride along the coast', 'Chilli crab at East Coast Seafood Centre', 'Satay at Lagoon Food Village', 'Watch the sunset by the sea'] },
+  ];
+
+  // ---------- Firebase ----------
+  const cfg = window.FIREBASE_CONFIG || {};
+  const configured = !!cfg.apiKey && !/^PASTE/.test(cfg.apiKey);
+  let auth = null, db = null;
+  if (configured && window.firebase) {
+    firebase.initializeApp(cfg);
+    auth = firebase.auth();
+    db = firebase.firestore();
+  }
+  const now = () => firebase.firestore.FieldValue.serverTimestamp();
+
+  // ---------- map ----------
+  const map = L.map('map', { zoomControl: false });
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+  map.fitBounds(SG_BOUNDS);
+  const updateLabels = () => $('#map').classList.toggle('show-labels', map.getZoom() >= 15);
+  map.on('zoomend', updateLabels);
+  updateLabels();
+  map.on('click', e => handleMapClick(e.latlng));
+  new ResizeObserver(() => map.invalidateSize()).observe($('#mapwrap'));
+
+  // ---------- state ----------
+  let me = null;              // signed-in Firebase user
+  let places = [];
+  let ballots = {};           // uid -> { votes: {placeId: 'yes'|'no'}, name, photo }
+  let messages = [];          // oldest first
+  let loaded = false;
+  let selectedId = null;
+  let adding = false, draft = null, draftMarker = null, prefill = null;
+  let voteBlocked = false;
+  let activeTab = 'vote', seenAt = Date.now();
+  let unsubscribers = [];
+  const markers = new Map();  // placeId -> { marker, key }
+
+  function cleanPlace(doc) {
+    const x = doc.data() || {};
+    const lat = Number(x.lat), lng = Number(x.lng);
+    if (!isFinite(lat) || !isFinite(lng)) return null;
+    return {
+      id: doc.id, name: str(x.name, 80) || 'Untitled place', icon: str(x.icon, 2) || '📍',
+      area: str(x.area, 60), mrt: str(x.mrt, 60), blurb: str(x.blurb, 300),
+      activities: Array.isArray(x.activities) ? x.activities.slice(0, 12).map(a => str(a, 160)).filter(Boolean) : [],
+      lat, lng, addedBy: typeof x.addedBy === 'string' ? x.addedBy : null, addedByName: str(x.addedByName, 60),
+      source: str(x.source, 12),
+    };
+  }
+  function tally(pid) {
+    const yes = [], no = [];
+    for (const [uid, b] of Object.entries(ballots)) {
+      if (b.votes[pid] === 'yes') yes.push(uid);
+      else if (b.votes[pid] === 'no') no.push(uid);
+    }
+    return { yes, no };
+  }
+  const ranked = () => places.map(p => ({ p, t: tally(p.id) }))
+    .sort((a, b) => (b.t.yes.length - b.t.no.length) - (a.t.yes.length - a.t.no.length)
+      || b.t.yes.length - a.t.yes.length || a.p.name.localeCompare(b.p.name));
+
+  // ---------- pins ----------
+  function pinIcon(icon, name, yes, selected, isDraft) {
+    return L.divIcon({
+      className: 'pin-wrap' + (selected ? ' selected' : ''),
+      html: `<div class="pin${selected ? ' sel' : ''}${isDraft ? ' draft' : ''}"><span class="emoji">${esc(icon)}</span>${yes ? `<span class="badge">${yes}</span>` : ''}</div>`
+        + (name ? `<div class="plabel">${esc(name)}</div>` : ''),
+      iconSize: [36, 36],
+      iconAnchor: [18, 44],
+    });
+  }
+  function renderPins() {
+    const seen = new Set();
+    for (const p of places) {
+      seen.add(p.id);
+      const yes = tally(p.id).yes.length, sel = p.id === selectedId;
+      const key = [p.icon, p.name, yes, sel, p.lat, p.lng].join('|');
+      let it = markers.get(p.id);
+      if (!it) {
+        const marker = L.marker([p.lat, p.lng], { title: p.name, alt: p.name, riseOnHover: true })
+          .on('click', () => { if (!adding) select(p.id, true); })
+          .addTo(map);
+        it = { marker, key: '' };
+        markers.set(p.id, it);
+      }
+      if (it.key !== key) {
+        it.marker.setIcon(pinIcon(p.icon, p.name, yes, sel, false));
+        it.marker.setLatLng([p.lat, p.lng]);
+        it.marker.setZIndexOffset(sel ? 1000 : 0);
+        it.key = key;
+      }
+    }
+    for (const [id, it] of markers) if (!seen.has(id)) { it.marker.remove(); markers.delete(id); }
+  }
+
+  // ---------- selecting and voting ----------
+  function handleMapClick(latlng) {
+    if (adding) {
+      if (!draft) {
+        draft = { lat: latlng.lat, lng: latlng.lng };
+        placeDraftMarker();
+        renderForm();
+        if (narrow()) scrollToEl($('#detail'));
+      } else {
+        draft.lat = latlng.lat; draft.lng = latlng.lng; draft.moved = true;
+        draftMarker.setLatLng(latlng);
+        updateFormCoords();
+      }
+      return;
+    }
+    if (selectedId) { selectedId = null; renderAll(); }
+  }
+  function select(id, fly) {
+    selectedId = id;
+    showTab('vote');
+    const p = places.find(q => q.id === id);
+    if (p && fly) map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15), { duration: reduceMotion ? 0 : 0.6 });
+    renderAll();
+    if (narrow() && fly) scrollToEl($('#detail'));
+  }
+
+  let voteChain = Promise.resolve();
+  function vote(pid, v) {
+    if (!db || !me || voteBlocked) return;
+    const mine = { ...((ballots[me.uid] || {}).votes || {}) };
+    if (mine[pid] === v) delete mine[pid]; else mine[pid] = v;
+    ballots = { ...ballots, [me.uid]: { votes: mine, name: me.displayName || '', photo: me.photoURL || '' } };
+    renderAll();
+    voteChain = voteChain
+      .then(() => db.collection('votes').doc(me.uid).set({
+        votes: mine, name: me.displayName || null, photo: me.photoURL || '', updatedAt: now(),
+      }))
+      .catch(e => {
+        if (e && e.code === 'permission-denied') { voteBlocked = true; toast("You can't vote on this trip. Ask the organiser to add your Google account."); }
+        else toast("Your vote didn't save. Check your connection and try again.");
+        renderAll();
+      });
+  }
+
+  // ---------- adding a place ----------
+  const ICONS = ['📍', '🏨', '🌳', '🏖️', '🍜', '🦀', '🏮', '🕌', '🛕', '🎡', '🎢', '🦒', '🛍️', '🍸', '☕', '🚲', '🏛️', '🌅'];
+  let formIcon = '📍';
+  function placeDraftMarker() {
+    if (draftMarker) draftMarker.remove();
+    draftMarker = L.marker([draft.lat, draft.lng], {
+      icon: pinIcon(formIcon, '', 0, false, true), draggable: true, zIndexOffset: 2000,
+      title: 'New place. Drag to move it.', alt: 'New place pin',
+    }).addTo(map);
+    draftMarker.on('dragend', () => {
+      const ll = draftMarker.getLatLng();
+      draft.lat = ll.lat; draft.lng = ll.lng; draft.moved = true;
+      updateFormCoords();
+    });
+  }
+  function clearDraft() {
+    if (draftMarker) { draftMarker.remove(); draftMarker = null; }
+    draft = null;
+  }
+  function startAdd(pre) {
+    adding = true; selectedId = null; prefill = pre || null;
+    formIcon = (pre && pre.icon) || '📍';
+    clearDraft();
+    $('#mapwrap').classList.add('adding');
+    $('#addBtn').textContent = 'Cancel';
+    $('#hint').hidden = !!pre;
+    showTab('vote');
+    renderAll();
+    if (pre) {
+      draft = { lat: pre.lat, lng: pre.lng };
+      placeDraftMarker();
+      map.flyTo([pre.lat, pre.lng], Math.max(map.getZoom(), 16), { duration: reduceMotion ? 0 : 0.6 });
+      renderForm();
+      if (narrow()) scrollToEl($('#mapwrap'));
+    }
+  }
+  function stopAdd() {
+    adding = false; prefill = null; clearDraft();
+    $('#mapwrap').classList.remove('adding');
+    $('#addBtn').textContent = '+ Add a place';
+    $('#hint').hidden = true;
+    renderAll();
+  }
+  $('#addBtn').onclick = () => (adding ? stopAdd() : startAdd());
+
+  function updateFormCoords() {
+    const c = $('#fCoords');
+    if (c && draft) c.textContent = coordText(draft.lat, draft.lng) + ' · drag the pin or tap the map to move it';
+  }
+  function setIcon(ic) {
+    formIcon = ic;
+    const icons = $('#fIcons');
+    if (icons) {
+      if (![...icons.children].some(b => b.textContent === ic)) icons.prepend(iconButton(ic));
+      for (const b of icons.children) b.setAttribute('aria-pressed', String(b.textContent === ic));
+    }
+    if (draftMarker) draftMarker.setIcon(pinIcon(ic, '', 0, false, true));
+  }
+  function iconButton(ic) {
+    const b = el('button', { type: 'button', 'aria-pressed': String(ic === formIcon), 'aria-label': 'Icon ' + ic, text: ic });
+    b.onclick = () => setIcon(ic);
+    return b;
+  }
+  const SOURCE_NOTES = {
+    link: 'This pin uses the exact location from the Google Maps link.',
+    coords: 'This pin uses the exact coordinates you pasted.',
+    search: "This pin comes from an OpenStreetMap search. Check it's the right place and drag the pin if needed.",
+  };
+  function renderForm() {
+    const pre = prefill || {};
+    const box = $('#detail');
+    box.replaceChildren(); box.className = 'card form';
+    const icons = el('div', { class: 'icons', id: 'fIcons', role: 'group', 'aria-label': 'Icon' });
+    for (const ic of (ICONS.includes(formIcon) ? ICONS : [formIcon, ...ICONS])) icons.append(iconButton(ic));
+    const err = el('p', { class: 'err', hidden: '' });
+    const saveLabel = pre.source ? 'Put it to a vote' : 'Save place';
+    const save = el('button', { class: 'primary', type: 'submit', text: saveLabel });
+    const form = el('form', {},
+      el('h2', { text: pre.source ? 'Check the pin' : 'New place' }),
+      el('p', { class: 'coords', id: 'fCoords' }),
+      SOURCE_NOTES[pre.source] ? el('p', { class: 'note', text: SOURCE_NOTES[pre.source] }) : null,
+      el('label', { for: 'fName', text: 'Name' }), el('input', { id: 'fName', maxlength: '80', placeholder: 'e.g. Clarke Quay', required: '' }),
+      el('label', { text: 'Icon' }), icons,
+      el('label', { for: 'fArea', text: 'Area or nearest MRT (optional)' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. Clarke Quay MRT' }),
+      el('label', { for: 'fBlurb', text: 'Why go? (optional)' }), el('input', { id: 'fBlurb', maxlength: '300', placeholder: 'One line to sell it to the group' }),
+      el('label', { for: 'fActs', text: 'Things to do, one per line' }), el('textarea', { id: 'fActs', placeholder: 'River cruise\nDinner by the water\nBar hopping' }),
+      err,
+      el('div', { class: 'factions' }, save, el('button', { class: 'ghost', type: 'button', id: 'fCancel', text: 'Cancel' })));
+    box.append(form);
+    $('#fName').value = pre.name || '';
+    $('#fArea').value = pre.area || '';
+    $('#fBlurb').value = pre.blurb || '';
+    $('#fActs').value = (pre.activities || []).join('\n');
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = $('#fName').value.trim();
+      if (!name) { err.textContent = 'Give the place a name.'; err.hidden = false; $('#fName').focus(); return; }
+      const doc = {
+        name: str(name, 80), icon: formIcon,
+        area: str($('#fArea').value.trim(), 60), mrt: '',
+        blurb: str($('#fBlurb').value.trim(), 300),
+        activities: $('#fActs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12).map(s => str(s, 160)),
+        lat: +draft.lat.toFixed(6), lng: +draft.lng.toFixed(6),
+        addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(),
+        source: pre.source || 'map',
+      };
+      save.disabled = true; save.textContent = 'Saving…'; err.hidden = true;
+      try {
+        const ref = await db.collection('places').add(doc);
+        postMessage({ kind: 'added', placeId: ref.id, placeName: doc.name, placeIcon: doc.icon }).catch(() => {});
+        stopAdd();
+        select(ref.id, false);
+        toast(`${doc.name} is up for a vote`);
+      } catch (x) {
+        save.disabled = false; save.textContent = saveLabel;
+        err.textContent = x && x.code === 'permission-denied'
+          ? "This place couldn't be saved. Check that it's in Singapore and the name isn't too long."
+          : "The place didn't save. Check your connection and try again.";
+        err.hidden = false;
+      }
+    });
+    $('#fCancel').onclick = stopAdd;
+    updateFormCoords();
+    if (!pre.name) $('#fName').focus({ preventScroll: true });
+  }
+
+  async function addStarters(btn) {
+    btn.disabled = true; btn.textContent = 'Adding…';
+    try {
+      const batch = db.batch();
+      for (const s of STARTERS) {
+        batch.set(db.collection('places').doc(), {
+          ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter',
+        });
+      }
+      await batch.commit();
+      toast('Added 9 places. Tap a pin to vote.');
+    } catch {
+      btn.disabled = false; btn.textContent = 'Add 9 popular places';
+      toast("The places didn't save. Try again.");
+    }
+  }
+
+  // ---------- panel ----------
+  function renderDetail() {
+    if (adding && draft) return; // keep the form while it's being filled in
+    const box = $('#detail');
+    box.className = 'card'; box.replaceChildren();
+
+    if (adding) {
+      box.append(el('div', { class: 'intro' }, el('h2', { text: 'Tap the map' }),
+        el('p', { text: 'Tap the spot where the place is. You can drag the pin before saving.' })));
+      return;
+    }
+    const p = places.find(q => q.id === selectedId);
+    if (!p) {
+      const intro = el('div', { class: 'intro' });
+      if (!loaded) intro.append(el('h2', { text: 'Loading places…' }));
+      else if (!places.length) {
+        const seed = el('button', { class: 'primary', type: 'button', text: 'Add 9 popular places' });
+        seed.onclick = () => addStarters(seed);
+        intro.append(el('h2', { text: 'No places yet' }),
+          el('p', { text: 'Suggest places in the Chat tab, tap "+ Add a place", or start with a list of popular Singapore spots.' }), seed);
+      } else intro.append(el('h2', { text: 'Where should we go?' }),
+        el('p', { text: 'Tap a pin to see what you can do there, then vote Yes or No. Places with the most Yes votes rise to the top of the list.' }));
+      box.append(intro);
+      return;
+    }
+
+    const t = tally(p.id);
+    const mine = me ? ((ballots[me.uid] || {}).votes || {})[p.id] : undefined;
+    const meta = [p.area, p.mrt].filter(Boolean).join(' · ');
+    const gmaps = el('a', { href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener', text: 'Open in Google Maps' });
+    const byline = p.addedByName ? `Suggested by ${p.addedBy === (me && me.uid) ? 'you' : p.addedByName}` : '';
+    box.append(el('div', { class: 'place' },
+      el('div', { class: 'phead' },
+        el('div', { class: 'bigicon', 'aria-hidden': 'true', text: p.icon }),
+        el('div', {}, el('h2', { text: p.name }), meta ? el('p', { class: 'meta', text: meta }) : null,
+          el('div', { class: 'coords' }, coordText(p.lat, p.lng), gmaps))),
+      p.blurb ? el('p', { class: 'blurb', text: p.blurb }) : null,
+      p.activities.length ? el('p', { class: 'eyebrow', text: 'Things to do' }) : null,
+      p.activities.length ? el('ul', { class: 'acts' }, ...p.activities.map(a => el('li', { text: a }))) : null,
+      byline ? el('p', { class: 'srcnote', text: byline }) : null));
+
+    const yesB = el('button', { class: 'vbtn yes', type: 'button', 'aria-pressed': String(mine === 'yes'), text: "Yes, I'm in" });
+    const noB = el('button', { class: 'vbtn no', type: 'button', 'aria-pressed': String(mine === 'no'), text: 'No, skip it' });
+    yesB.disabled = noB.disabled = !me || voteBlocked;
+    yesB.onclick = () => vote(p.id, 'yes');
+    noB.onclick = () => vote(p.id, 'no');
+    const total = t.yes.length + t.no.length;
+    const pct = n => `width:${total ? (n / total) * 100 : 0}%`;
+    const voterList = ids => {
+      const ul = el('ul', { class: 'chips' });
+      if (!ids.length) ul.append(el('li', { class: 'none', text: 'Nobody yet' }));
+      for (const uid of ids) {
+        const b = ballots[uid] || {};
+        ul.append(el('li', {},
+          b.photo ? el('img', { src: b.photo, alt: '', referrerpolicy: 'no-referrer' }) : null,
+          el('span', { text: uid === (me && me.uid) ? 'You' : (b.name || 'Someone') })));
+      }
+      return ul;
+    };
+    box.append(
+      el('p', { class: 'eyebrow', text: 'Do you want to go?' }),
+      el('div', { class: 'votebtns' }, yesB, noB),
+      el('p', { class: 'vnote', text: voteBlocked ? "You can't vote on this trip. Ask the organiser to add your Google account." : mine ? 'Tap your vote again to take it back.' : 'Everyone on the trip can see your vote.' }),
+      el('div', { class: 'tbar', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })),
+      el('div', { class: 'voters' },
+        el('div', {}, el('h4', { class: 'yh', text: `Yes · ${t.yes.length}` }), voterList(t.yes)),
+        el('div', {}, el('h4', { class: 'nh', text: `No · ${t.no.length}` }), voterList(t.no))));
+
+    if (me && p.addedBy === me.uid) {
+      const rm = el('button', { class: 'rm', type: 'button', text: 'Remove this place' });
+      let armed = false;
+      rm.onclick = async () => {
+        if (!armed) { armed = true; rm.classList.add('armed'); rm.textContent = 'Tap again to remove it for everyone'; return; }
+        rm.disabled = true;
+        try { await db.collection('places').doc(p.id).delete(); selectedId = null; renderAll(); toast(`Removed ${p.name}`); }
+        catch { rm.disabled = false; toast("Couldn't remove the place. Try again."); }
+      };
+      box.append(rm);
+    }
+  }
+
+  function renderRows() {
+    const ul = $('#rows');
+    ul.replaceChildren();
+    if (!places.length) {
+      ul.append(el('li', {}, el('p', { class: 'empty', text: loaded ? 'Nothing to rank yet.' : 'Loading…' })));
+      return;
+    }
+    ranked().forEach(({ p, t }, i) => {
+      const total = t.yes.length + t.no.length;
+      const pct = n => `width:${total ? (n / total) * 100 : 0}%`;
+      const b = el('button', { class: 'row', type: 'button', 'aria-current': String(p.id === selectedId) },
+        el('span', { class: 'pos', text: String(i + 1) }),
+        el('span', { class: 'ic', 'aria-hidden': 'true', text: p.icon }),
+        el('span', { class: 'nm' }, p.name, el('span', { class: 'ar', text: p.area || coordText(p.lat, p.lng) })),
+        el('span', { class: 'ct' }, el('span', { class: 'y', text: `${t.yes.length} yes` }), el('span', { class: 'n', text: `${t.no.length} no` })),
+        el('span', { class: 'mini', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })));
+      b.onclick = () => { if (adding) stopAdd(); select(p.id, true); };
+      ul.append(el('li', {}, b));
+    });
+  }
+
+  function renderStats() {
+    $('#nPlaces').textContent = places.length;
+    const ids = new Set(places.map(p => p.id));
+    $('#nVoters').textContent = Object.values(ballots).filter(b => Object.keys(b.votes).some(k => ids.has(k))).length;
+  }
+
+  function renderAll() {
+    if (selectedId && !places.some(p => p.id === selectedId)) selectedId = null;
+    renderPins(); renderRows(); renderStats(); renderDetail();
+  }
+
+  // ---------- tabs ----------
+  function showTab(t) {
+    activeTab = t;
+    $('#tabVote').setAttribute('aria-selected', String(t === 'vote'));
+    $('#tabChat').setAttribute('aria-selected', String(t === 'chat'));
+    $('#paneVote').hidden = t !== 'vote';
+    $('#paneChat').hidden = t !== 'chat';
+    if (t === 'chat') { const m = $('#msgs'); m.scrollTop = m.scrollHeight; }
+    renderUnread();
+  }
+  $('#tabVote').onclick = () => showTab('vote');
+  $('#tabChat').onclick = () => showTab('chat');
+  function renderUnread() {
+    if (activeTab === 'chat') seenAt = Date.now();
+    const n = messages.filter(m => m.createdAt > seenAt && m.uid !== (me && me.uid)).length;
+    const u = $('#unread');
+    u.hidden = !n || activeTab === 'chat';
+    u.textContent = n > 9 ? '9+' : String(n);
+  }
+
+  // ---------- chat ----------
+  function linkify(text) {
+    const frag = document.createDocumentFragment();
+    const re = /https?:\/\/[^\s<>"]+/gi;
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) frag.append(text.slice(last, m.index));
+      const url = m[0];
+      frag.append(el('a', { href: url, target: '_blank', rel: 'noopener noreferrer', text: url.length > 48 ? url.slice(0, 45) + '…' : url }));
+      last = m.index + url.length;
+    }
+    if (last < text.length) frag.append(text.slice(last));
+    return frag;
+  }
+  function whenText(ms) {
+    const d = new Date(ms), today = new Date();
+    const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d.toDateString() === today.toDateString() ? t : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ', ' + t;
+  }
+  function renderChat() {
+    const box = $('#msgs');
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.replaceChildren();
+    if (!messages.length) {
+      box.append(el('li', { class: 'empty', text: 'No messages yet. Paste a Google Maps link, coordinates or a place name to suggest somewhere.' }));
+    }
+    for (const m of messages) {
+      const who = m.uid === (me && me.uid) ? 'You' : (m.name || 'Someone');
+      const body = el('p', { class: 'body' });
+      if (m.kind === 'added') {
+        const see = el('button', { class: 'linkbtn', type: 'button', text: 'See it and vote' });
+        see.onclick = () => (places.some(p => p.id === m.placeId) ? select(m.placeId, true) : toast('That place has been removed.'));
+        body.append('added ', el('b', { text: `${m.placeIcon || '📍'} ${m.placeName || 'a place'}` }), ' to the vote. ', see);
+      } else body.append(linkify(m.text));
+      box.append(el('li', { class: 'msg' + (m.kind === 'added' ? ' added' : '') },
+        m.photo ? el('img', { class: 'av', src: m.photo, alt: '', referrerpolicy: 'no-referrer' }) : el('span'),
+        el('div', {}, el('span', { class: 'who', text: who }), el('span', { class: 'when', text: whenText(m.createdAt) }), body)));
+    }
+    if (atBottom || activeTab !== 'chat') box.scrollTop = box.scrollHeight;
+  }
+
+  function postMessage(extra) {
+    return db.collection('messages').add({
+      uid: me.uid, name: me.displayName || null, photo: me.photoURL || '', createdAt: now(), ...extra,
+    });
+  }
+
+  // Reading what people paste.
+  function parseInput(text) {
+    const s = text.trim();
+    const hasUrl = /https?:\/\/\S+/i.test(s);
+    const coordRe = /(-?\d{1,2}\.\d{3,})\s*[,\s]\s*(-?\d{2,3}\.\d{3,})/;
+    let lat = null, lng = null, source = 'coords', m;
+    if ((m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))) { lat = +m[1]; lng = +m[2]; source = 'link'; }            // the place itself
+    else if ((m = s.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))) { lat = +m[1]; lng = +m[2]; source = 'link'; }
+    else if ((m = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))) { lat = +m[1]; lng = +m[2]; source = 'link'; }            // map centre
+    else if ((m = s.match(coordRe))) { lat = +m[1]; lng = +m[2]; }
+    let name = '';
+    const pm = s.match(/\/maps\/place\/([^/@?]+)/);
+    if (pm) { try { name = decodeURIComponent(pm[1].replace(/\+/g, ' ')); } catch { name = pm[1].replace(/\+/g, ' '); } }
+    const rest = s.replace(/https?:\/\/\S+/g, ' ').replace(coordRe, ' ').replace(/\s+/g, ' ').trim();
+    if (lat != null && isFinite(lat) && isFinite(lng)) {
+      if (!name && rest && rest.length <= 80) name = rest.split(',')[0].trim();
+      return { kind: inSingapore(lat, lng) ? 'exact' : 'outside', lat, lng, name: str(name, 80), source };
+    }
+    if (/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|share\.google)/i.test(s)) return { kind: 'short', rest };
+    if (hasUrl) return { kind: 'link', rest };
+    return { kind: 'text', rest: s };
+  }
+
+  // OpenStreetMap place search (free, no key). Only called when someone taps a button or pastes coordinates.
+  const ICON_BY_TYPE = {
+    cafe: '☕', restaurant: '🍜', fast_food: '🍜', food_court: '🍜', bar: '🍸', pub: '🍸', nightclub: '🍸',
+    museum: '🏛️', gallery: '🏛️', attraction: '🎡', theme_park: '🎢', zoo: '🦒', aquarium: '🦒',
+    park: '🌳', garden: '🌳', nature_reserve: '🌳', beach: '🏖️', hotel: '🏨', place_of_worship: '🛕',
+    mall: '🛍️', marketplace: '🛍️', department_store: '🛍️', viewpoint: '🌅',
+  };
+  function fromOsm(x) {
+    const lat = Number(x.lat), lng = Number(x.lon);
+    if (!isFinite(lat) || !isFinite(lng) || !inSingapore(lat, lng)) return null;
+    const a = x.address || {};
+    return {
+      name: str(x.name || String(x.display_name || '').split(',')[0], 80),
+      lat, lng,
+      area: str(a.suburb || a.neighbourhood || a.quarter || a.city_district || a.road || '', 60),
+      icon: ICON_BY_TYPE[x.type] || '📍',
+      address: str(x.display_name, 160),
+    };
+  }
+  async function osm(path, params) {
+    const url = `https://nominatim.openstreetmap.org/${path}?` + new URLSearchParams({ format: 'jsonv2', addressdetails: '1', 'accept-language': 'en', ...params });
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('search failed');
+    return r.json();
+  }
+  const osmSearch = async q => (await osm('search', { q, countrycodes: 'sg', limit: '5' })).map(fromOsm).filter(Boolean);
+  const osmReverse = async (lat, lng) => { const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
+
+  // The helper box above the message box. Only the person who sent the message sees it.
+  const TIP = 'For an exact pin: in the Google Maps app, press and hold on the place, copy the numbers at the top (like 1.28473, 103.83251) and paste them here.';
+  function assist(...kids) { const a = $('#assist'); a.replaceChildren(...kids); a.hidden = !kids.length; }
+  function closeBtn(label) { const b = el('button', { class: 'ghost', type: 'button', text: label || 'OK' }); b.onclick = () => assist(); return b; }
+
+  function offerSearch(q, intro) {
+    const go = el('button', { class: 'primary', type: 'button', text: 'Search the map' });
+    go.onclick = () => runSearch(q);
+    assist(el('p', { text: intro }), el('div', { class: 'row2' }, go, closeBtn('No thanks')));
+  }
+  async function runSearch(q) {
+    assist(el('p', {}, el('span', { class: 'spin', 'aria-hidden': 'true' }), ` Searching for "${str(q, 60)}"…`));
+    try {
+      const results = await osmSearch(q);
+      if (!results.length) {
+        assist(el('p', { text: 'No matches in Singapore. Try the full name, or add the street or area.' }), el('p', { class: 'small', text: TIP }), el('div', { class: 'row2' }, closeBtn()));
+        return;
+      }
+      const list = el('ul', { class: 'results' });
+      for (const r of results) {
+        const b = el('button', { type: 'button' }, el('span', { 'aria-hidden': 'true', text: r.icon }),
+          el('span', {}, el('b', { text: r.name }), el('small', { text: r.address })));
+        b.onclick = () => { assist(); startAdd({ ...r, source: 'search' }); };
+        list.append(el('li', {}, b));
+      }
+      assist(el('p', { text: 'Which one is it?' }), list, el('div', { class: 'row2' }, closeBtn('None of these')));
+    } catch {
+      assist(el('p', { text: "Search isn't working right now. Try again in a minute, or paste the coordinates." }), el('div', { class: 'row2' }, closeBtn()));
+    }
+  }
+
+  $('#cInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
+  });
+  $('#composer').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input = $('#cInput'), text = input.value.trim();
+    if (!text || !db || !me) return;
+    const send = $('#cSend');
+    send.disabled = true;
+    try { await postMessage({ kind: 'text', text: str(text, 1000) }); }
+    catch { send.disabled = false; toast("Your message didn't send. Try again."); return; }
+    input.value = ''; send.disabled = false;
+
+    const r = parseInput(text);
+    if (r.kind === 'exact') {
+      assist();
+      startAdd({ lat: r.lat, lng: r.lng, name: r.name, source: r.source });
+      if (!r.name) {
+        // Look up what's at that spot to suggest a name.
+        osmReverse(r.lat, r.lng).then(x => {
+          if (!x || !adding) return;
+          const nm = $('#fName'), ar = $('#fArea');
+          if (nm && !nm.value.trim()) nm.value = x.name;
+          if (ar && !ar.value.trim()) ar.value = x.area;
+          if (formIcon === '📍' && x.icon !== '📍') setIcon(x.icon);
+        }).catch(() => {});
+      }
+    } else if (r.kind === 'outside') {
+      assist(el('p', { text: "Those coordinates are outside Singapore, so there's no spot on this map for them." }), el('div', { class: 'row2' }, closeBtn()));
+    } else if (r.kind === 'short') {
+      if (r.rest) offerSearch(r.rest, "Short Google Maps links can't be opened here, but your message has a name in it. Search the map for it?");
+      else assist(el('p', { text: "Short Google Maps links can't be opened here. Paste the place's name or its coordinates instead." }), el('p', { class: 'small', text: TIP }), el('div', { class: 'row2' }, closeBtn()));
+    } else if (r.kind === 'link') {
+      if (r.rest) offerSearch(r.rest, "This link can't be opened here. Search the map for the rest of your message?");
+    } else {
+      offerSearch(text, `Is "${str(text, 50)}" a place you want to suggest?`);
+    }
+  });
+
+  // ---------- live data ----------
+  function stopListening() {
+    for (const u of unsubscribers) u();
+    unsubscribers = [];
+    places = []; ballots = {}; messages = []; loaded = false; voteBlocked = false;
+  }
+  function onDenied(err) {
+    if (err && err.code === 'permission-denied') {
+      showGate(`The Google account ${me && me.email ? me.email : ''} isn't on this trip's guest list. Ask the organiser to add it, or sign in with a different account.`, true);
+    } else toast('Lost connection to the trip. Reload the page to reconnect.');
+  }
+  function startListening() {
+    stopListening();
+    unsubscribers.push(db.collection('places').onSnapshot(snap => {
+      places = snap.docs.map(cleanPlace).filter(Boolean);
+      loaded = true;
+      renderAll();
+    }, onDenied));
+    unsubscribers.push(db.collection('votes').onSnapshot(snap => {
+      const next = {};
+      for (const doc of snap.docs) {
+        const x = doc.data() || {};
+        const votes = {};
+        if (x.votes && typeof x.votes === 'object') for (const k in x.votes) if (x.votes[k] === 'yes' || x.votes[k] === 'no') votes[k] = x.votes[k];
+        next[doc.id] = { votes, name: str(x.name, 60), photo: typeof x.photo === 'string' ? x.photo : '' };
+      }
+      ballots = next;
+      renderAll();
+    }, onDenied));
+    unsubscribers.push(db.collection('messages').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
+      messages = snap.docs.map(doc => {
+        const x = doc.data({ serverTimestamps: 'estimate' }) || {};
+        return {
+          id: doc.id, uid: str(x.uid, 128), name: str(x.name, 60), photo: typeof x.photo === 'string' ? x.photo : '',
+          createdAt: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now(),
+          kind: x.kind === 'added' ? 'added' : 'text', text: str(x.text, 1000),
+          placeId: str(x.placeId, 128), placeName: str(x.placeName, 80), placeIcon: str(x.placeIcon, 2),
+        };
+      }).reverse();
+      renderUnread(); renderChat();
+    }, onDenied));
+  }
+
+  // ---------- sign-in ----------
+  function showGate(text, signedIn) {
+    $('#gate').hidden = false;
+    $('#gateText').textContent = text;
+    const btn = $('#signIn');
+    btn.hidden = !auth;
+    btn.textContent = signedIn ? 'Use a different Google account' : 'Sign in with Google';
+    $('#gateErr').hidden = true;
+  }
+  function authErrorText(e) {
+    const code = e && e.code;
+    if (code === 'auth/unauthorized-domain') return "This web address isn't allowed to sign in yet. The organiser needs to add it in Firebase (SETUP.md, step 3).";
+    if (code === 'auth/network-request-failed') return "Couldn't reach Google. Check your connection and try again.";
+    if (code === 'auth/operation-not-allowed') return 'Google sign-in is switched off in Firebase. The organiser needs to turn it on (SETUP.md, step 2).';
+    return 'Sign-in failed. Try again.';
+  }
+  $('#signIn').onclick = async () => {
+    if (!auth) return;
+    if (me) await auth.signOut();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      await auth.signInWithPopup(provider);
+    } catch (e) {
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);
+      if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+      const err = $('#gateErr'); err.textContent = authErrorText(e); err.hidden = false;
+    }
+  };
+  $('#signOut').onclick = () => auth && auth.signOut();
+
+  renderAll();
+  renderChat();
+
+  if (location.protocol === 'file:') {
+    showGate('Google sign-in only works when the app is on a website. Open the GitHub Pages link, or see SETUP.md to test it on your computer.', false);
+    $('#signIn').hidden = true;
+  } else if (!window.firebase) {
+    showGate("Couldn't load Google sign-in. Check your internet connection and reload the page.", false);
+  } else if (!configured) {
+    showGate("This app isn't connected to Firebase yet. Follow SETUP.md, then reload.", false);
+  } else {
+    auth.getRedirectResult().catch(e => { const err = $('#gateErr'); err.textContent = authErrorText(e); err.hidden = false; });
+    auth.onAuthStateChanged(user => {
+      me = user;
+      if (user) {
+        $('#gate').hidden = true;
+        $('#me').hidden = false;
+        $('#meName').textContent = user.displayName || user.email || 'You';
+        if (user.photoURL) $('#meAvatar').src = user.photoURL; else $('#meAvatar').removeAttribute('src');
+        $('#addBtn').hidden = false;
+        startListening();
+      } else {
+        stopListening();
+        if (adding) stopAdd();
+        $('#me').hidden = true;
+        $('#addBtn').hidden = true;
+        showGate('Sign in with your Google account to see the places and vote.', false);
+        renderAll(); renderChat();
+      }
+    });
+  }
+})();
