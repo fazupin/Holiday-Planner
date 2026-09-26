@@ -1178,7 +1178,10 @@
   }
 
   // ---------- projects ----------
-  const inviteLink = pid => `${location.origin}${location.pathname}?p=${encodeURIComponent(pid)}`;
+  // Invite links always use the Firebase Hosting address (the same site as Firebase's sign-in
+  // helper), because Google sign-in on phones fails from other addresses like GitHub Pages.
+  const APP_URL = cfg.authDomain ? `https://${cfg.authDomain}/` : `${location.origin}${location.pathname}`;
+  const inviteLink = pid => `${APP_URL}?p=${encodeURIComponent(pid)}`;
 
   function cleanProject(doc) {
     const x = doc.data() || {};
