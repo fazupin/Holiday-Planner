@@ -197,6 +197,7 @@
     map.getPane('streets').style.display = showStreets ? '' : 'none';
     map.getPane('transit').style.display = detailed ? '' : 'none';
     if (showStreets) map.removeLayer(handDrawn); else if (!map.hasLayer(handDrawn)) handDrawn.addTo(map);
+    if (showStreets) map.removeLayer(mrtLines); else if (!map.hasLayer(mrtLines)) mrtLines.addTo(map);
     for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mapMode));
   }
   function setMapMode(m) {
@@ -255,6 +256,65 @@
     }
   }
   loadMrt().catch(() => { /* stations are a nice-to-have */ });
+
+  // MRT/LRT lines for the simple map: stations joined in order, in each line's official colour.
+  map.createPane('mrtlines').style.zIndex = 160; // above the hand-drawn land, below the street map
+  const mrtLines = L.layerGroup();
+  const LINE_COLOURS = { NS: '#D42E12', EW: '#009645', CG: '#009645', NE: '#9900AA', CC: '#FA9E0D', CE: '#FA9E0D', DT: '#005EC4', TE: '#9D5B25' };
+  const hexColour = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
+  async function loadMrtLines() {
+    let lines = cacheGet('wanderly-mrt-lines-v1', 30 * 864e5);
+    if (!lines) {
+      const els = await overpass(`[out:json][timeout:30];
+        relation["route"~"^(subway|light_rail)$"](1.15,103.6,1.48,104.1);
+        out body;
+        node(r);
+        out body;`);
+      const nodes = new Map();
+      for (const e of els) if (e.type === 'node') nodes.set(e.id, e);
+      lines = [];
+      for (const r of els) {
+        if (r.type !== 'relation') continue;
+        const t = r.tags || {};
+        const stops = [];
+        for (const m of r.members || []) {
+          if (m.type !== 'node' || !/^stop/.test(m.role || '')) continue;
+          const n = nodes.get(m.ref);
+          if (!n) continue;
+          const nt = n.tags || {};
+          stops.push([+n.lat.toFixed(5), +n.lon.toFixed(5), str(nt['name:en'] || nt.name || '', 60).replace(/ (MRT|LRT) Station$/i, '')]);
+        }
+        if (stops.length < 2) continue;
+        const prefix = String(t.ref || '').slice(0, 2).toUpperCase();
+        const lrt = t.route === 'light_rail';
+        lines.push({ colour: hexColour(t.colour) || LINE_COLOURS[prefix] || '#748477', lrt, stops });
+      }
+      if (lines.length) cacheSet('wanderly-mrt-lines-v1', lines);
+    }
+    // Draw LRT first so the MRT lines sit on top.
+    lines.sort((a, b) => Number(b.lrt) - Number(a.lrt));
+    for (const line of lines) {
+      const pts = line.stops.map(s => [s[0], s[1]]);
+      const w = line.lrt ? 2 : 3.5;
+      L.polyline(pts, { pane: 'mrtlines', color: '#FFFFFF', weight: w + 3, opacity: 0.9, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(mrtLines);
+      L.polyline(pts, { pane: 'mrtlines', color: line.colour, weight: w, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(mrtLines);
+    }
+    const seen = new Set();
+    for (const line of lines) {
+      for (const [lat, lng, name] of line.stops) {
+        const key = name || `${lat.toFixed(3)},${lng.toFixed(3)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const dot = L.circleMarker([lat, lng], {
+          pane: 'mrtlines', radius: line.lrt ? 2.5 : 3.5, color: '#2A3431', weight: 1.2,
+          fillColor: '#FFFFFF', fillOpacity: 1, bubblingMouseEvents: false,
+        });
+        if (name) dot.bindTooltip(`${esc(name)} ${line.lrt ? 'LRT' : 'MRT'}`, { direction: 'top', offset: [0, -4] });
+        dot.addTo(mrtLines);
+      }
+    }
+  }
+  loadMrtLines().catch(() => { /* the simple map works without the lines */ });
 
   // Bus stops only show when zoomed in close, and load for the area on screen.
   const BUS_ZOOM = 16;
