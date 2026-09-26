@@ -1307,6 +1307,7 @@
     if (open) (($('#projList').querySelector('[aria-checked="true"]')) || $('#projList').querySelector('button')).focus();
   }
   $('#projBtn').onclick = () => showProjMenu($('#projList').hidden);
+  $('#allProjectsBtn').onclick = () => closeProject();
   $('#projList').addEventListener('keydown', e => {
     const items = [...$('#projList').querySelectorAll('button')];
     const i = items.indexOf(document.activeElement);
