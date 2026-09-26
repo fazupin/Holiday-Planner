@@ -315,6 +315,7 @@
   map.createPane('mrtlines').style.zIndex = 190; // above the hand-drawn land and the street map
   map.createPane('stationlabels').style.zIndex = 195;
   const mrtLines = L.layerGroup();
+  let mrtStations = []; // { name, lat, lng, lrtOnly } once the MRT data loads; used to suggest meeting stations
   const ZOOM_HINT = matchMedia('(hover: hover)').matches ? 'Double-click to zoom in' : 'Double-tap to zoom in';
   const LINE_COLOURS = { NS: '#D42E12', EW: '#009645', CG: '#009645', NE: '#9900AA', CC: '#FA9E0D', CE: '#FA9E0D', DT: '#005EC4', TE: '#9D5B25' };
   const hexColour = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
@@ -391,6 +392,7 @@
       }
     }
     for (const st of stations.values()) { st.lat = st.latSum / st.count; st.lng = st.lngSum / st.count; }
+    mrtStations = [...stations.values()].filter(s => s.name).map(s => ({ name: s.name, lat: s.lat, lng: s.lng, lrtOnly: s.lrt && !s.mrt }));
     const at = (lat, lng, name) => { const st = stations.get(stationKey(lat, lng, name)); return [st.lat, st.lng]; };
 
     // Draw LRT first so the MRT lines sit on top.
@@ -487,6 +489,8 @@
   let voteBlocked = false;
   let activeTab = 'vote', seenAt = Date.now();
   let unsubscribers = [];
+  let itinerary = [];         // this project's plan: stops with meeting points
+  let reservations = [];      // this project's reservations checklist
   const markers = new Map();  // placeId -> { marker, key }
 
   // Projects: each has its own places, votes and chat, stored under projects/{id}/...
@@ -792,6 +796,9 @@
       p.activities.length ? el('p', { class: 'eyebrow', text: 'Things to do' }) : null,
       p.activities.length ? el('ul', { class: 'acts' }, ...p.activities.map(a => el('li', { text: a }))) : null,
       byline ? el('p', { class: 'srcnote', text: byline }) : null));
+    const planBtn = el('button', { class: 'ghost small-btn planbtn', type: 'button', text: '+ Add to itinerary' });
+    planBtn.onclick = () => openItinForm({ id: null, pre: { placeId: p.id } });
+    box.append(planBtn);
 
     const yesB = el('button', { class: 'vbtn yes', type: 'button', 'aria-pressed': String(mine === 'yes'), text: "Yes, I'm in" });
     const noB = el('button', { class: 'vbtn no', type: 'button', 'aria-pressed': String(mine === 'no'), text: 'No, skip it' });
@@ -911,12 +918,13 @@
   function renderAll() {
     if (selectedId && !places.some(p => p.id === selectedId)) selectedId = null;
     renderPins(); renderRows(); renderStats(); renderDetail(); renderBulk();
+    renderItinerary(); // stop names link to places on the map, which may have changed
   }
 
   // ---------- tabs ----------
   function showTab(t) {
     activeTab = t;
-    for (const [tab, pane, name] of [['#tabVote', '#paneVote', 'vote'], ['#tabChat', '#paneChat', 'chat'], ['#tabProject', '#paneProject', 'project']]) {
+    for (const [tab, pane, name] of [['#tabVote', '#paneVote', 'vote'], ['#tabChat', '#paneChat', 'chat'], ['#tabItin', '#paneItin', 'itin'], ['#tabProject', '#paneProject', 'project']]) {
       $(tab).setAttribute('aria-selected', String(t === name));
       $(pane).hidden = t !== name;
     }
@@ -925,6 +933,7 @@
   }
   $('#tabVote').onclick = () => showTab('vote');
   $('#tabChat').onclick = () => showTab('chat');
+  $('#tabItin').onclick = () => showTab('itin');
   $('#tabProject').onclick = () => showTab('project');
   function renderUnread() {
     if (activeTab === 'chat') seenAt = Date.now();
@@ -1143,11 +1152,207 @@
     }
   });
 
+  // ---------- itinerary ----------
+  // Each stop: where and when, plus two ways to meet up: by car/motorbike (usually at the place
+  // itself) or by public transport (usually at the nearest MRT station, a bit earlier to walk over).
+  const hhmm = v => (/^\d{2}:\d{2}$/.test(v || '') ? v : '');
+  const ymd = v => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '');
+  function cleanStop(doc) {
+    const x = doc.data() || {};
+    return {
+      id: doc.id, title: str(x.title, 80) || 'Untitled stop', icon: str(x.icon, 2) || '📍',
+      placeId: typeof x.placeId === 'string' ? x.placeId : null,
+      date: ymd(x.date), time: hhmm(x.time),
+      carWhere: str(x.carWhere, 80), carTime: hhmm(x.carTime),
+      ptWhere: str(x.ptWhere, 80), ptTime: hhmm(x.ptTime),
+      notes: str(x.notes, 300),
+    };
+  }
+  const fmtTime = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+  const fmtDate = d => { if (!d) return 'Date to be decided'; const [y, m, day] = d.split('-').map(Number); return new Date(y, m - 1, day).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
+  const minusMinutes = (t, n) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); const total = (h * 60 + m - n + 1440) % 1440; return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; };
+  function nearestStation(lat, lng) {
+    let best = null, bestD = Infinity;
+    for (const s of mrtStations) {
+      if (s.lrtOnly) continue;
+      const dx = (s.lng - lng) * Math.cos(lat * Math.PI / 180), dy = s.lat - lat, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    return best ? `${best.name} MRT` : '';
+  }
+  const sortStops = list => [...list].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || (a.time || '99').localeCompare(b.time || '99') || a.title.localeCompare(b.title));
+
+  let itinForm = null; // null, or { id: stop id or null for a new one, pre: starting values }
+  function renderItinerary() {
+    const box = $('#itinList');
+    box.replaceChildren();
+    if (!itinerary.length && !itinForm) box.append(el('p', { class: 'empty', text: 'Nothing planned yet. Add a stop, or open a place on the map and tap Add to itinerary.' }));
+    let lastDate = null;
+    for (const s of sortStops(itinerary)) {
+      if (itinForm && itinForm.id === s.id) continue; // being edited below
+      if (s.date !== lastDate) { box.append(el('h4', { class: 'itinday', text: fmtDate(s.date) })); lastDate = s.date; }
+      const onMap = s.placeId && places.some(p => p.id === s.placeId);
+      const name = onMap ? el('button', { class: 'linkbtn itinplace', type: 'button', text: s.title }) : el('span', { class: 'itinplace', text: s.title });
+      if (onMap) name.onclick = () => select(s.placeId, true);
+      const meet = el('div', { class: 'meet' });
+      if (s.carWhere || s.carTime) meet.append(el('p', {}, el('span', { class: 'mode', 'aria-hidden': 'true', text: '🚗' }),
+        el('span', {}, el('b', { text: 'Car or motorbike: ' }), `meet at ${s.carWhere || s.title}${s.carTime ? ` by ${fmtTime(s.carTime)}` : ''}`)));
+      if (s.ptWhere || s.ptTime) meet.append(el('p', {}, el('span', { class: 'mode', 'aria-hidden': 'true', text: '🚆' }),
+        el('span', {}, el('b', { text: 'Public transport: ' }), `meet at ${s.ptWhere || 'the MRT station'}${s.ptTime ? ` by ${fmtTime(s.ptTime)}` : ''}`)));
+      const edit = el('button', { class: 'msgbtn', type: 'button', text: 'Edit' });
+      edit.onclick = () => openItinForm({ id: s.id, pre: s });
+      const del = el('button', { class: 'msgbtn', type: 'button', text: 'Delete' });
+      let armed = false;
+      del.onclick = async () => {
+        if (!armed) { armed = true; del.textContent = 'Tap again to delete'; del.classList.add('armed'); return; }
+        del.disabled = true;
+        try { await col('itinerary').doc(s.id).delete(); } catch { del.disabled = false; toast("Couldn't delete the stop. Try again."); }
+      };
+      box.append(el('div', { class: 'stop' },
+        el('div', { class: 'stoptime', text: s.time ? fmtTime(s.time) : '—' }),
+        el('div', { class: 'stopbody' },
+          el('div', { class: 'stophead' }, el('span', { class: 'stopicon', 'aria-hidden': 'true', text: s.icon }), name),
+          meet.childNodes.length ? meet : null,
+          s.notes ? el('p', { class: 'stopnotes', text: s.notes }) : null,
+          el('div', { class: 'msgacts' }, edit, del))));
+    }
+    $('#itinAddBtn').hidden = !!itinForm;
+  }
+
+  // Add or edit a stop. pre can hold a placeId (from "Add to itinerary" on a place) or a whole stop.
+  function openItinForm(opts) {
+    itinForm = opts;
+    const pre = opts.pre || {};
+    const place = pre.placeId ? places.find(p => p.id === pre.placeId) : null;
+    const box = $('#itinFormBox');
+    box.replaceChildren();
+    const f = (id, attrs = {}) => el('input', { id, ...attrs });
+    const placeSel = el('select', { id: 'itPlace', 'aria-label': 'Place' },
+      el('option', { value: '', text: 'Somewhere else (type below)' }),
+      ...places.map(p => el('option', { value: p.id, text: `${p.icon} ${p.name}` })));
+    placeSel.value = place ? place.id : '';
+    const form = el('form', { class: 'form itinform' },
+      el('h2', { text: opts.id ? 'Edit stop' : 'Add to itinerary' }),
+      el('label', { for: 'itPlace', text: 'Place' }), placeSel,
+      el('label', { for: 'itTitle', text: 'Name' }), f('itTitle', { maxlength: '80', required: '', placeholder: 'e.g. Dinner at Zam Zam' }),
+      el('div', { class: 'formrow' },
+        el('div', {}, el('label', { for: 'itDate', text: 'Date' }), f('itDate', { type: 'date' })),
+        el('div', {}, el('label', { for: 'itTime', text: 'Time at the place' }), f('itTime', { type: 'time' }))),
+      el('p', { class: 'eyebrow', text: 'Where to meet' }),
+      el('p', { class: 'small', text: '🚗 By car or motorbike' }),
+      el('div', { class: 'formrow' },
+        el('div', {}, el('label', { for: 'itCarWhere', text: 'Meet at' }), f('itCarWhere', { maxlength: '80', placeholder: 'e.g. the restaurant' })),
+        el('div', {}, el('label', { for: 'itCarTime', text: 'By' }), f('itCarTime', { type: 'time' }))),
+      el('p', { class: 'small', text: '🚆 By public transport' }),
+      el('div', { class: 'formrow' },
+        el('div', {}, el('label', { for: 'itPtWhere', text: 'Meet at' }), f('itPtWhere', { maxlength: '80', placeholder: 'e.g. Bugis MRT', list: 'itStations' })),
+        el('div', {}, el('label', { for: 'itPtTime', text: 'By' }), f('itPtTime', { type: 'time' }))),
+      el('datalist', { id: 'itStations' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
+      el('p', { class: 'small', id: 'itHint' }),
+      el('label', { for: 'itNotes', text: 'Notes (optional)' }), el('textarea', { id: 'itNotes', maxlength: '300', placeholder: 'e.g. Booking under Faz. Bring cash.' }),
+      el('p', { class: 'err', id: 'itErr', hidden: '' }),
+      el('div', { class: 'factions' }, el('button', { class: 'primary', type: 'submit', text: opts.id ? 'Save' : 'Add' }), el('button', { class: 'ghost', type: 'button', id: 'itCancel', text: 'Cancel' })));
+    box.append(form);
+
+    $('#itTitle').value = pre.title || (place ? place.name : '');
+    $('#itDate').value = pre.date || '';
+    $('#itTime').value = pre.time || '';
+    $('#itCarWhere').value = pre.carWhere || (place ? place.name : '');
+    $('#itCarTime').value = pre.carTime || '';
+    $('#itPtWhere').value = pre.ptWhere || (place ? nearestStation(place.lat, place.lng) : '');
+    $('#itPtTime').value = pre.ptTime || '';
+    $('#itNotes').value = pre.notes || '';
+
+    // Suggestions that follow what you pick, without overwriting anything you've typed yourself.
+    const touched = new Set(opts.id ? ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime'] : []);
+    for (const id of ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime']) $('#' + id).addEventListener('input', () => touched.add(id));
+    const suggest = (id, value) => { if (!touched.has(id)) $('#' + id).value = value; };
+    const hint = () => {
+      const p = places.find(x => x.id === placeSel.value);
+      $('#itHint').textContent = p && $('#itPtWhere').value ? `${$('#itPtWhere').value} is the nearest MRT station to ${p.name}. The suggested meeting time is 15 minutes earlier, to walk over.` : '';
+    };
+    placeSel.onchange = () => {
+      const p = places.find(x => x.id === placeSel.value);
+      if (p) { suggest('itTitle', p.name); suggest('itCarWhere', p.name); suggest('itPtWhere', nearestStation(p.lat, p.lng)); }
+      hint();
+    };
+    $('#itTime').addEventListener('input', () => { const t = $('#itTime').value; suggest('itCarTime', t); suggest('itPtTime', minusMinutes(t, 15)); });
+    hint();
+
+    $('#itCancel').onclick = closeItinForm;
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const title = $('#itTitle').value.trim();
+      if (!title) { $('#itErr').textContent = 'Give the stop a name.'; $('#itErr').hidden = false; return; }
+      const p = places.find(x => x.id === placeSel.value);
+      const data = {
+        title: str(title, 80), icon: p ? p.icon : (pre.icon || '📍'), placeId: p ? p.id : null,
+        date: ymd($('#itDate').value), time: hhmm($('#itTime').value),
+        carWhere: str($('#itCarWhere').value.trim(), 80), carTime: hhmm($('#itCarTime').value),
+        ptWhere: str($('#itPtWhere').value.trim(), 80), ptTime: hhmm($('#itPtTime').value),
+        notes: str($('#itNotes').value.trim(), 300), updatedAt: now(), expireAt: expiry(),
+      };
+      const btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        if (opts.id) await col('itinerary').doc(opts.id).update(data);
+        else await col('itinerary').add({ ...data, createdBy: me.uid, createdAt: now() });
+        closeItinForm();
+        toast(opts.id ? 'Stop updated' : 'Added to the itinerary');
+      } catch {
+        btn.disabled = false;
+        $('#itErr').textContent = "The stop didn't save. Check your connection and try again."; $('#itErr').hidden = false;
+      }
+    };
+    renderItinerary();
+    showTab('itin');
+    if (narrow()) scrollToEl(box);
+    if (!opts.id && !place) $('#itTitle').focus({ preventScroll: true });
+  }
+  function closeItinForm() { itinForm = null; $('#itinFormBox').replaceChildren(); renderItinerary(); }
+  $('#itinAddBtn').onclick = () => openItinForm({ id: null, pre: {} });
+
+  // Reservations checklist.
+  function renderReservations() {
+    const list = $('#resList');
+    list.replaceChildren();
+    if (!reservations.length) { list.append(el('li', { class: 'empty', text: 'No reservations yet.' })); return; }
+    for (const r of reservations) {
+      const box = el('input', { type: 'checkbox', id: 'res-' + r.id });
+      box.checked = r.done;
+      box.onchange = async () => {
+        box.disabled = true;
+        const update = box.checked
+          ? { done: true, doneBy: me.uid, doneByName: me.displayName || null }
+          : { done: false, doneBy: null, doneByName: null };
+        try { await col('reservations').doc(r.id).update(update); }
+        catch { box.checked = !box.checked; toast("Couldn't update the checklist. Try again."); }
+        finally { box.disabled = false; }
+      };
+      const del = el('button', { class: 'msgbtn', type: 'button', text: 'Delete', 'aria-label': `Delete ${r.title}` });
+      del.onclick = async () => { try { await col('reservations').doc(r.id).delete(); } catch { toast("Couldn't delete it. Try again."); } };
+      const who = r.done ? (r.doneBy === (me && me.uid) ? 'Done by you' : `Done by ${r.doneByName || 'someone'}`) : '';
+      list.append(el('li', { class: r.done ? 'done' : '' },
+        box,
+        el('label', { for: 'res-' + r.id }, el('span', { class: 'restitle', text: r.title }), who ? el('span', { class: 'small', text: who }) : null),
+        del));
+    }
+  }
+  $('#resForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input = $('#resInput'), title = input.value.trim();
+    if (!title || !projectId) return;
+    input.value = '';
+    try { await col('reservations').add({ title: str(title, 120), done: false, doneBy: null, doneByName: null, createdBy: me.uid, createdAt: now(), expireAt: expiry() }); }
+    catch { input.value = title; toast("Couldn't add it. Try again."); }
+  });
+
   // ---------- live data ----------
   function stopListening() {
     for (const u of unsubscribers) u();
     unsubscribers = [];
-    places = []; ballots = {}; messages = []; loaded = false; voteBlocked = false;
+    places = []; ballots = {}; messages = []; itinerary = []; reservations = []; loaded = false; voteBlocked = false;
+    itinForm = null; $('#itinFormBox').replaceChildren(); renderItinerary(); renderReservations();
   }
   function onDenied(err) {
     if (err && err.code === 'permission-denied') {
@@ -1191,6 +1396,17 @@
         };
       }).reverse();
       renderUnread(); renderChat();
+    }, onDataError));
+    unsubscribers.push(col('itinerary').onSnapshot(snap => {
+      itinerary = snap.docs.map(cleanStop);
+      renderItinerary();
+    }, onDataError));
+    unsubscribers.push(col('reservations').orderBy('createdAt').onSnapshot(snap => {
+      reservations = snap.docs.map(doc => {
+        const x = doc.data({ serverTimestamps: 'estimate' }) || {};
+        return { id: doc.id, title: str(x.title, 120), done: x.done === true, doneBy: typeof x.doneBy === 'string' ? x.doneBy : null, doneByName: str(x.doneByName, 60) };
+      });
+      renderReservations();
     }, onDataError));
   }
 
@@ -1283,7 +1499,7 @@
   // Delete a whole project and everything in it (owner, or the last person left).
   async function deleteProjectData(pid) {
     const ref = db.collection('projects').doc(pid);
-    for (const name of ['places', 'votes', 'messages']) await deleteAll(ref.collection(name));
+    for (const name of ['places', 'votes', 'messages', 'itinerary', 'reservations']) await deleteAll(ref.collection(name));
     await ref.delete();
   }
   // Leave a project: your ballot is removed; your messages and places stay for the group.
@@ -1354,6 +1570,7 @@
     document.body.classList.toggle('in-project', inProject);
     $('#tabVote').hidden = !inProject;
     $('#tabChat').hidden = !inProject;
+    $('#tabItin').hidden = !inProject;
     $('#tabProject').textContent = inProject ? 'Project' : 'Projects';
     $('#projMenu').hidden = !me || !inProject;
     $('#newProjCard').hidden = !me || inProject || !projectsLoaded || !projects.length;
@@ -1546,6 +1763,8 @@
       const ref = db.collection('projects').doc(p.id);
       if (p.memberIds.length <= 1) { await deleteProjectData(p.id); continue; }
       await deleteAll(ref.collection('messages').where('uid', '==', uid));
+      const ticked = await ref.collection('reservations').where('doneBy', '==', uid).get();
+      for (const d of ticked.docs) await d.ref.update({ doneByName: null });
       const mine = await ref.collection('places').where('addedBy', '==', uid).get();
       for (const d of mine.docs) await d.ref.update({ addedByName: null });
       await leaveProject(p);

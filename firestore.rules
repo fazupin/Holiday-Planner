@@ -108,6 +108,40 @@ service cloud.firestore {
         allow delete: if uid() == voter || isOwner();
       }
 
+      // Itinerary: the plan for the trip. Anyone in the project can add, edit or delete a stop.
+      function validStop(d) {
+        return isText(d.title, 80) && d.title.size() > 0
+          && isText(d.date, 10) && isText(d.time, 5)
+          && isText(d.icon, 8)
+          && isText(d.carWhere, 80) && isText(d.carTime, 5)
+          && isText(d.ptWhere, 80) && isText(d.ptTime, 5)
+          && isText(d.notes, 300);
+      }
+      match /itinerary/{itemId} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.createdBy == uid() && validStop(request.resource.data);
+        allow update: if isMember() && request.resource.data.createdBy == resource.data.createdBy && validStop(request.resource.data);
+        allow delete: if isMember();
+      }
+
+      // Reservations checklist. Anyone in the project can add, tick or delete an item.
+      // Ticking records who did it; you can only put your own name on it.
+      match /reservations/{resId} {
+        allow read: if isMember();
+        allow create: if isMember()
+          && request.resource.data.createdBy == uid()
+          && isText(request.resource.data.title, 120) && request.resource.data.title.size() > 0
+          && request.resource.data.done == false;
+        allow update: if isMember()
+          && request.resource.data.createdBy == resource.data.createdBy
+          && isText(request.resource.data.title, 120) && request.resource.data.title.size() > 0
+          && request.resource.data.done is bool
+          && (request.resource.data.get('doneBy', null) == null
+              || request.resource.data.doneBy == resource.data.get('doneBy', null)
+              || (request.resource.data.doneBy == uid() && request.resource.data.doneByName == myName()));
+        allow delete: if isMember();
+      }
+
       // Chat messages: post as yourself only; nobody can edit them.
       // 'rename' messages are the notices posted when someone renames the project.
       match /messages/{messageId} {

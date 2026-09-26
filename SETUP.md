@@ -120,6 +120,8 @@ Everything the app saves has an `expireAt` date 12 months ahead. Opening a proje
    - `places`
    - `votes`
    - `messages`
+   - `itinerary`
+   - `reservations`
 
 If Google asks you to upgrade to a paid plan for this, skip it and tell me. We can remove old projects another way.
 

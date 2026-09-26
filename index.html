@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=34">
+  <link rel="stylesheet" href="css/style.css?v=35">
 </head>
 <body>
   <div class="app">
@@ -98,6 +98,7 @@
         <div class="tabs" role="tablist">
           <button role="tab" id="tabVote" aria-selected="true" aria-controls="paneVote" type="button">Places &amp; votes</button>
           <button role="tab" id="tabChat" aria-selected="false" aria-controls="paneChat" type="button">Chat <span class="unread" id="unread" hidden></span></button>
+          <button role="tab" id="tabItin" aria-selected="false" aria-controls="paneItin" type="button">Itinerary</button>
           <button role="tab" id="tabProject" aria-selected="false" aria-controls="paneProject" type="button">Project</button>
         </div>
         <div class="pane" id="paneVote" role="tabpanel" aria-labelledby="tabVote">
@@ -106,6 +107,24 @@
             <h3>Ranked by votes</h3>
             <ul class="rows" id="rows"></ul>
             <div class="bulk" id="bulk"></div>
+          </section>
+        </div>
+        <div class="pane" id="paneItin" role="tabpanel" aria-labelledby="tabItin" hidden>
+          <section class="card">
+            <h3 class="cardtitle">Itinerary</h3>
+            <p class="small">The plan for the trip: where to go, when, and where to meet. Anyone in the project can edit it.</p>
+            <div id="itinList" class="itinlist"></div>
+            <div id="itinFormBox"></div>
+            <button type="button" class="primary" id="itinAddBtn">+ Add to itinerary</button>
+          </section>
+          <section class="card">
+            <h3 class="cardtitle">Reservations</h3>
+            <p class="small">Things to book before the trip. Tick them off when they're done.</p>
+            <ul id="resList" class="checklist"></ul>
+            <form class="inlineform" id="resForm">
+              <input id="resInput" maxlength="120" placeholder="e.g. Book table at Zam Zam for 6" aria-label="New reservation" required>
+              <button class="primary" type="submit">Add</button>
+            </form>
           </section>
         </div>
         <div class="pane" id="paneProject" role="tabpanel" aria-labelledby="tabProject" hidden>
@@ -262,7 +281,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script src="js/firebase-config.js?v=34"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="js/firebase-config.js?v=35"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
