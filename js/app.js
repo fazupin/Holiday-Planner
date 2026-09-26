@@ -188,8 +188,8 @@
   }
 
   // Simple (hand-drawn) or Detailed (streets, stations, bus stops). Remembered on this device.
-  let mapMode = 'detailed';
-  try { if (localStorage.getItem('wanderly-map-mode') === 'simple') mapMode = 'simple'; } catch { /* storage blocked */ }
+  let mapMode = 'simple';
+  try { if (localStorage.getItem('wanderly-map-mode') === 'detailed') mapMode = 'detailed'; } catch { /* storage blocked */ }
   function applyMapMode() {
     const detailed = mapMode === 'detailed';
     if (detailed) { try { addStreetMap(); } catch { streetsState = 'failed'; } }
