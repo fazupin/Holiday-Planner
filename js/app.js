@@ -1494,7 +1494,7 @@
       return;
     }
     box.className = 'card';
-    box.append(el('p', { class: 'eyebrow', text: `Your projects (${projects.length})` }));
+    box.append(el('p', { class: 'eyebrow', text: `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}` }));
     const list = el('div', { class: 'projcards' });
     for (const x of projects) {
       const faces = el('span', { class: 'avatars' });

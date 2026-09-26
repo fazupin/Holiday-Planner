@@ -145,6 +145,21 @@ body:not(.in-project) .inproj,
 body:not(.in-project) #mapMode [data-mode="detailed"],
 body:not(.in-project) #keyBtn { display: none; }
 
+/* Start page: no tab bar; the title, your projects and "Start a new project" sit in one card. */
+.lobbytitle { display: none; }
+body:not(.in-project) .tabs { display: none; }
+body:not(.in-project) #paneProject {
+  flex: 0 1 auto; gap: 0; padding: 18px 18px 16px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+}
+body:not(.in-project) .lobbytitle {
+  display: block; margin: 0 0 14px;
+  font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -.02em; color: var(--ink);
+}
+body:not(.in-project) #paneProject > .card { background: none; border: 0; border-radius: 0; padding: 0; }
+body:not(.in-project) #newProjCard:not([hidden]) { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+body:not(.in-project) .legallinks { margin-top: 18px; }
+
 .startcard { padding: 24px 20px; }
 .startcard h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1.1; margin: 0; }
 .startcard > p { color: var(--muted); margin: 8px 0 0; }
