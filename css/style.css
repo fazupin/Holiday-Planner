@@ -395,12 +395,45 @@ path.res { fill: var(--sea-in); stroke: none; }
 .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* chat moderation */
+.msgacts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; }
+.msgbtn { background: none; border: 0; padding: 0; font-size: 12px; color: var(--muted); text-decoration: underline; }
+.msgbtn:hover { color: var(--ink); }
+.msgbtn.armed { color: var(--no); font-weight: 700; }
+.msgnote { font-size: 12px; color: var(--muted); }
+.flag { font-size: 11px; font-weight: 700; color: var(--no); background: color-mix(in srgb, var(--no) 14%, transparent); border-radius: 999px; padding: 1px 8px; }
+
+/* leave / delete / account */
+.confirmbox { display: flex; flex-direction: column; gap: 6px; }
+.confirmbox .small:empty { display: none; }
+#accountCard .row2 { margin-top: 10px; }
+.legallinks { margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
+.legallinks a, .legal a { color: var(--accent); }
+
 /* ---------- sign-in gate ---------- */
 .gate { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(6px); }
 .gatecard { max-width: 420px; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; box-shadow: var(--shadow); text-align: center; }
 .gatecard h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; margin: 4px 0 8px; }
 .gatecard p { color: var(--muted); margin: 0 0 18px; }
 .gatecard .err { margin: 14px 0 0; }
+.gatecard .legal { margin: 18px 0 0; font-size: 12px; }
+
+/* Privacy Policy and Terms of Use pages */
+body.docpage { height: auto; }
+.doc { max-width: 68ch; margin-inline: auto; padding-block: 32px 64px; }
+.doc .back { font-size: 14px; color: var(--accent); }
+.doc h1 { margin-top: 12px; }
+.doc .updated { color: var(--muted); font-size: 13px; margin: 6px 0 24px; }
+.doc h2 { font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: -.01em; margin: 32px 0 8px; text-wrap: balance; }
+.doc p, .doc li { line-height: 1.65; }
+.doc ul { padding-left: 20px; }
+.doc li + li { margin-top: 4px; }
+.doc a { color: var(--accent); }
+.doc .tablewrap { overflow-x: auto; }
+.doc table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.doc th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.doc .callout { background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; }
 
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 2100; background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: var(--shadow); }
 

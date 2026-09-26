@@ -9,3 +9,7 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "16699951428",
   appId: "1:16699951428:web:b553845b36239f19c6af11"
 };
+
+// App Check (optional, stops bots from using the database). Paste your reCAPTCHA v3
+// site key here to switch it on. SETUP.md explains how to get one.
+window.APP_CHECK_SITE_KEY = "";

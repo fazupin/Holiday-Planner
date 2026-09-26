@@ -72,10 +72,19 @@
   let projectId = null; // the project on screen; null means the start page (your projects)
   if (configured && window.firebase) {
     firebase.initializeApp(cfg);
+    // App Check proves requests come from this website, not a bot. Off until a site key is set.
+    if (window.APP_CHECK_SITE_KEY && firebase.appCheck) {
+      try { firebase.appCheck().activate(new firebase.appCheck.ReCaptchaV3Provider(window.APP_CHECK_SITE_KEY), true); }
+      catch { /* keep working without it */ }
+    }
     auth = firebase.auth();
     db = firebase.firestore();
   }
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
+  // Everything saved carries an expiry date 12 months ahead. With Firestore's TTL setting switched
+  // on (SETUP.md), Firebase deletes it automatically after that. Using a project pushes its date back.
+  const RETAIN_MS = 365 * 864e5;
+  const expiry = () => firebase.firestore.Timestamp.fromMillis(Date.now() + RETAIN_MS);
 
   // ---------- map ----------
   // Two layers: a street map from OpenFreeMap (roads, rail lines), and underneath it a simple
@@ -494,7 +503,7 @@
     renderAll();
     voteChain = voteChain
       .then(() => col('votes').doc(me.uid).set({
-        votes: mine, name: me.displayName || null, photo: me.photoURL || '', updatedAt: now(),
+        votes: mine, name: me.displayName || null, photo: me.photoURL || '', updatedAt: now(), expireAt: expiry(),
       }))
       .catch(e => {
         if (e && e.code === 'permission-denied') { voteBlocked = true; toast("You can't vote on this trip. Ask the organiser to add your Google account."); }
@@ -608,7 +617,7 @@
         activities: $('#fActs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12).map(s => str(s, 160)),
         lat: +draft.lat.toFixed(6), lng: +draft.lng.toFixed(6),
         addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(),
-        source: pre.source || 'map',
+        source: pre.source || 'map', expireAt: expiry(),
       };
       save.disabled = true; save.textContent = 'Saving…'; err.hidden = true;
       try {
@@ -636,7 +645,7 @@
       const batch = db.batch();
       for (const s of STARTERS) {
         batch.set(col('places').doc(), {
-          ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter',
+          ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter', expireAt: expiry(),
         });
       }
       await batch.commit();
@@ -874,14 +883,53 @@
       } else body.append(linkify(m.text));
       box.append(el('li', { class: 'msg' + (m.kind !== 'text' ? ' added' : '') },
         m.photo ? el('img', { class: 'av', src: m.photo, alt: '', referrerpolicy: 'no-referrer' }) : el('span'),
-        el('div', {}, el('span', { class: 'who', text: who }), el('span', { class: 'when', text: whenText(m.createdAt) }), body)));
+        el('div', {}, el('span', { class: 'who', text: who }), el('span', { class: 'when', text: whenText(m.createdAt) }), body, messageActions(m))));
     }
     if (atBottom || activeTab !== 'chat') box.scrollTop = box.scrollHeight;
   }
 
+  // Moderation: delete your own messages, report other people's. The project owner sees
+  // reports and can remove any message.
+  function messageActions(m) {
+    if (!me) return null;
+    const p = currentProject();
+    const isOwner = !!p && p.createdBy === me.uid;
+    const mine = m.uid === me.uid;
+    const row = el('span', { class: 'msgacts' });
+    if (isOwner && m.reportedBy.length) {
+      row.append(el('span', { class: 'flag', text: `Reported by ${m.reportedBy.length} ${m.reportedBy.length === 1 ? 'person' : 'people'}` }));
+    }
+    if (mine || isOwner) {
+      const del = el('button', { class: 'msgbtn', type: 'button', text: mine ? 'Delete' : 'Remove' });
+      let armed = false;
+      del.onclick = async () => {
+        if (!armed) { armed = true; del.textContent = 'Tap again to delete'; del.classList.add('armed'); return; }
+        del.disabled = true;
+        try { await col('messages').doc(m.id).delete(); }
+        catch { del.disabled = false; toast("Couldn't delete the message. Try again."); }
+      };
+      row.append(del);
+    }
+    if (!mine && m.kind === 'text') {
+      if (m.reportedBy.includes(me.uid)) row.append(el('span', { class: 'msgnote', text: 'You reported this' }));
+      else {
+        const rep = el('button', { class: 'msgbtn', type: 'button', text: 'Report' });
+        rep.onclick = async () => {
+          rep.disabled = true;
+          try {
+            await col('messages').doc(m.id).update({ reportedBy: firebase.firestore.FieldValue.arrayUnion(me.uid) });
+            toast('Reported. The project owner can see it and remove it.');
+          } catch { rep.disabled = false; toast("Couldn't report the message. Try again."); }
+        };
+        row.append(rep);
+      }
+    }
+    return row.childNodes.length ? row : null;
+  }
+
   function postMessage(extra) {
     return col('messages').add({
-      uid: me.uid, name: me.displayName || null, photo: me.photoURL || '', createdAt: now(), ...extra,
+      uid: me.uid, name: me.displayName || null, photo: me.photoURL || '', createdAt: now(), expireAt: expiry(), ...extra,
     });
   }
 
@@ -1017,6 +1065,11 @@
       showGate(`The Google account ${me && me.email ? me.email : ''} isn't on this trip's guest list. Ask the organiser to add it, or sign in with a different account.`, true);
     } else toast('Lost connection to the trip. Reload the page to reconnect.');
   }
+  // A project's data stops being readable when you leave it or it's deleted: go back to your projects.
+  function onDataError(err) {
+    if (err && err.code === 'permission-denied') { if (projectId) { closeProject(); toast("You're no longer in that project."); } }
+    else toast('Lost connection to the trip. Reload the page to reconnect.');
+  }
   function startListening() {
     stopListening();
     if (!projectId) return;
@@ -1024,7 +1077,7 @@
       places = snap.docs.map(cleanPlace).filter(Boolean);
       loaded = true;
       renderAll();
-    }, onDenied));
+    }, onDataError));
     unsubscribers.push(col('votes').onSnapshot(snap => {
       const next = {};
       for (const doc of snap.docs) {
@@ -1035,7 +1088,7 @@
       }
       ballots = next;
       renderAll();
-    }, onDenied));
+    }, onDataError));
     unsubscribers.push(col('messages').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
       messages = snap.docs.map(doc => {
         const x = doc.data({ serverTimestamps: 'estimate' }) || {};
@@ -1045,10 +1098,11 @@
           kind: ['added', 'rename'].includes(x.kind) ? x.kind : 'text', text: str(x.text, 1000),
           placeId: str(x.placeId, 128), placeName: str(x.placeName, 80), placeIcon: str(x.placeIcon, 2),
           from: str(x.from, 60), to: str(x.to, 60),
+          reportedBy: Array.isArray(x.reportedBy) ? x.reportedBy.filter(s => typeof s === 'string') : [],
         };
       }).reverse();
       renderUnread(); renderChat();
-    }, onDenied));
+    }, onDataError));
   }
 
   // ---------- projects ----------
@@ -1062,7 +1116,8 @@
       const m = info[uid] || {};
       return { uid, name: str(m.name, 60) || 'Someone', photo: typeof m.photo === 'string' ? m.photo : '' };
     });
-    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members };
+    const lastActiveAt = x.lastActiveAt && x.lastActiveAt.toMillis ? x.lastActiveAt.toMillis() : 0;
+    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members, lastActiveAt };
   }
   const myMemberInfo = () => ({ name: me.displayName || null, photo: me.photoURL || '', joinedAt: now() });
 
@@ -1117,6 +1172,41 @@
     startListening();
     renderAll(); renderChat(); renderProjects();
     showTab('vote');
+    // Opening a project counts as using it: push its 12-month expiry back (at most once a day).
+    const p = currentProject();
+    if (p && Date.now() - p.lastActiveAt > 864e5) {
+      db.collection('projects').doc(pid).update({ lastActiveAt: now(), expireAt: expiry() }).catch(() => {});
+    }
+  }
+
+  // Delete every document in one of the current project's collections, in batches.
+  async function deleteAll(query) {
+    const snap = await query.get();
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = db.batch();
+      for (const d of snap.docs.slice(i, i + 400)) batch.delete(d.ref);
+      await batch.commit();
+    }
+  }
+  // Delete a whole project and everything in it (owner, or the last person left).
+  async function deleteProjectData(pid) {
+    const ref = db.collection('projects').doc(pid);
+    for (const name of ['places', 'votes', 'messages']) await deleteAll(ref.collection(name));
+    await ref.delete();
+  }
+  // Leave a project: your ballot is removed; your messages and places stay for the group.
+  // The last person to leave deletes the project. An owner who leaves hands ownership on.
+  async function leaveProject(p) {
+    const ref = db.collection('projects').doc(p.id);
+    if (p.memberIds.length <= 1) { await deleteProjectData(p.id); return; }
+    await ref.collection('votes').doc(me.uid).delete();
+    const rest = p.memberIds.filter(id => id !== me.uid);
+    const update = {
+      memberIds: firebase.firestore.FieldValue.arrayRemove(me.uid),
+      [`members.${me.uid}`]: firebase.firestore.FieldValue.delete(),
+    };
+    if (p.createdBy === me.uid) update.createdBy = rest[0];
+    await ref.update(update);
   }
   // Back to the start page (your projects).
   function closeProject() {
@@ -1136,6 +1226,7 @@
     await ref.set({
       name: str(name, 60), createdBy: me.uid, createdAt: now(),
       memberIds: [me.uid], members: { [me.uid]: myMemberInfo() },
+      lastActiveAt: now(), expireAt: expiry(),
     });
     openProject(ref.id);
     toast(`Created ${str(name, 60)}. Send your friends the invite link.`);
@@ -1144,7 +1235,7 @@
   async function renameProject(newName) {
     const p = currentProject();
     if (!p || newName === p.name) return;
-    await db.collection('projects').doc(p.id).update({ name: str(newName, 60), renamedAt: now() });
+    await db.collection('projects').doc(p.id).update({ name: str(newName, 60), renamedAt: now(), lastActiveAt: now(), expireAt: expiry() });
     await postMessage({ kind: 'rename', from: p.name, to: str(newName, 60) });
   }
 
@@ -1185,6 +1276,8 @@
     }
     $('#addBtn').hidden = !me || !p;
     renderProjectCard();
+    renderAccount();
+    if (p) renderChat(); // owner-only chat controls depend on who owns the project
   }
   // Project switcher menu (styled to match the app, unlike the browser's own dropdown).
   function renderProjMenu() {
@@ -1259,7 +1352,7 @@
     box.append(el('p', { class: 'eyebrow', text: `People (${p.members.length})` }));
     const list = el('ul', { class: 'people' });
     for (const m of p.members) {
-      const bits = [m.uid === me.uid ? 'you' : '', m.uid === p.createdBy ? 'started this project' : ''].filter(Boolean).join(', ');
+      const bits = [m.uid === me.uid ? 'you' : '', m.uid === p.createdBy ? 'owner' : ''].filter(Boolean).join(', ');
       list.append(el('li', {}, avatar(m, 'pav'), el('span', { class: 'pname', text: m.name }), bits ? el('span', { class: 'small', text: bits }) : null));
     }
     box.append(list);
@@ -1274,6 +1367,37 @@
     };
     box.append(el('div', { class: 'inlineform' }, link, copy),
       el('p', { class: 'small', text: 'Anyone who opens this link and signs in with Google joins this project.' }));
+
+    // Leave, or (owner only) delete the project. Both ask to confirm first.
+    const isOwner = p.createdBy === me.uid;
+    const alone = p.memberIds.length <= 1;
+    const zone = el('div', { class: 'delrow' });
+    const confirmBtn = (label, confirmText, warning, action, done) => {
+      const b = el('button', { class: 'danger', type: 'button', text: label });
+      const note = el('p', { class: 'small', hidden: '' });
+      const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel', hidden: '' });
+      let armed = false;
+      const reset = () => { armed = false; b.textContent = label; b.classList.remove('armed'); note.hidden = true; cancel.hidden = true; };
+      cancel.onclick = reset;
+      b.onclick = async () => {
+        if (!armed) { armed = true; b.textContent = confirmText; b.classList.add('armed'); note.textContent = warning; note.hidden = false; cancel.hidden = false; return; }
+        b.disabled = true; cancel.hidden = true; b.textContent = 'Working…';
+        stopListening(); // stop reading this project before it disappears
+        try { await action(); closeProject(); toast(done); }
+        catch { startListening(); b.disabled = false; reset(); toast('That didn’t work. Check your connection and try again.'); }
+      };
+      return el('div', { class: 'confirmbox' }, note, el('div', { class: 'row2' }, b, cancel));
+    };
+    zone.append(confirmBtn('Leave project', 'Yes, leave',
+      alone ? `You're the only person here, so leaving deletes "${p.name}" and everything in it for good.`
+        : `You'll stop seeing "${p.name}" and your votes will be removed. Your messages and places stay for the group.${isOwner ? ' Someone else will become the owner.' : ''}`,
+      () => leaveProject(p), alone ? `Deleted ${p.name}` : `You left ${p.name}`));
+    if (isOwner && !alone) {
+      zone.append(confirmBtn('Delete project', 'Yes, delete for everyone',
+        `This deletes "${p.name}" with all its places, votes and chat for all ${p.memberIds.length} people. It can't be undone.`,
+        () => deleteProjectData(p.id), `Deleted ${p.name}`));
+    }
+    box.append(el('p', { class: 'eyebrow', text: isOwner ? 'Leave or delete' : 'Leave' }), zone);
   }
 
   // Start page: one big "Start a project" when you have none, otherwise your projects.
@@ -1308,6 +1432,68 @@
       list.append(b);
     }
     box.append(list);
+  }
+
+  // ---------- your account ----------
+  // Delete my account: for every project you're in, delete your chat messages, remove your
+  // name from places you added, remove your vote and leave. Projects where you're the only
+  // person are deleted. Then delete your sign-in record.
+  let deletingAccount = false;
+  async function deleteAccount(status) {
+    const uid = me.uid;
+    if (projectsUnsub) { projectsUnsub(); projectsUnsub = null; }
+    stopListening();
+    const snap = await db.collection('projects').where('memberIds', 'array-contains', uid).get();
+    for (const p of snap.docs.map(cleanProject)) {
+      status(`Removing your data from "${p.name}"…`);
+      const ref = db.collection('projects').doc(p.id);
+      if (p.memberIds.length <= 1) { await deleteProjectData(p.id); continue; }
+      await deleteAll(ref.collection('messages').where('uid', '==', uid));
+      const mine = await ref.collection('places').where('addedBy', '==', uid).get();
+      for (const d of mine.docs) await d.ref.update({ addedByName: null });
+      await leaveProject(p);
+    }
+    status('Deleting your sign-in record…');
+    try { await me.delete(); }
+    catch (e) {
+      if (e && e.code === 'auth/requires-recent-login') {
+        status('Google needs you to confirm it’s you. Sign in once more to finish.');
+        await me.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+        await me.delete();
+      } else throw e;
+    }
+  }
+  function renderAccount() {
+    const box = $('#accountCard');
+    box.hidden = !me || !!projectId || !projectsLoaded;
+    if (box.hidden || deletingAccount) return;
+    box.replaceChildren(
+      el('h3', { class: 'cardtitle', text: 'Your account' }),
+      el('p', { class: 'small', text: `Signed in as ${me.displayName || 'you'}${me.email ? ` (${me.email})` : ''} with Google.` }));
+    const del = el('button', { class: 'danger', type: 'button', text: 'Delete my account' });
+    const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel', hidden: '' });
+    const note = el('p', { class: 'small', hidden: '' });
+    let armed = false;
+    const reset = () => { armed = false; del.textContent = 'Delete my account'; del.classList.remove('armed'); cancel.hidden = true; note.hidden = true; };
+    cancel.onclick = reset;
+    del.onclick = async () => {
+      if (!armed) {
+        armed = true; del.textContent = 'Yes, delete everything'; del.classList.add('armed'); cancel.hidden = false; note.hidden = false;
+        note.textContent = `This removes you from all ${projects.length} of your projects, deletes your votes and chat messages, removes your name from places you added, and deletes your sign-in record. Projects where you're the only person are deleted too. This can't be undone.`;
+        return;
+      }
+      deletingAccount = true; del.disabled = true; cancel.hidden = true;
+      try {
+        await deleteAccount(msg => { note.textContent = msg; });
+        deletingAccount = false;
+        toast('Your account and data have been deleted.');
+      } catch {
+        deletingAccount = false;
+        toast("Your account wasn't fully deleted. Sign in again and retry, or contact the organiser.");
+        if (me) startProjects().catch(onDenied);
+      }
+    };
+    box.append(note, el('div', { class: 'row2' }, del, cancel));
   }
 
   async function submitNewProject(e, input, btn) {

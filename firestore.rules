@@ -16,47 +16,68 @@ service cloud.firestore {
     }
     function isText(v, max) { return v is string && v.size() <= max; }
     function myName() { return request.auth.token.name; }
+    function uid() { return request.auth.uid; }
 
     // Projects: one per trip or group. Each has its own places, votes and chat.
+    // The person who started a project ("owner", createdBy) can delete it and remove any
+    // chat message. If the owner leaves, ownership passes to someone still in the project.
     match /projects/{pid} {
       function members() { return resource.data.memberIds; }
       function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      function membersChangedOnlyForMe() {
+        return request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([uid()]);
+      }
 
       // Opening a project by its id is how invite links work. Ids are long and random,
       // so only people who were sent the link can find a project.
       allow get: if allowed();
       // Listing only shows projects you're in.
-      allow list: if allowed() && request.auth.uid in resource.data.memberIds;
+      allow list: if allowed() && uid() in resource.data.memberIds;
 
       allow create: if allowed()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.memberIds == [uid()]
         && request.resource.data.members is map
-        && request.resource.data.members.keys().hasOnly([request.auth.uid])
+        && request.resource.data.members.keys().hasOnly([uid()])
         && isText(request.resource.data.name, 60) && request.resource.data.name.size() > 0;
 
       allow update: if allowed() && (
         // Anyone in the project can rename it.
-        (request.auth.uid in members()
-          && changed().hasOnly(['name', 'renamedAt'])
+        (uid() in members()
+          && changed().hasOnly(['name', 'renamedAt', 'lastActiveAt', 'expireAt'])
           && isText(request.resource.data.name, 60) && request.resource.data.name.size() > 0)
+        ||
+        // Anyone in the project can mark it as recently used (keeps it from expiring).
+        (uid() in members() && changed().hasOnly(['lastActiveAt', 'expireAt']))
         ||
         // Anyone with the invite link can add themselves, and only themselves.
         (changed().hasOnly(['memberIds', 'members'])
-          && request.resource.data.memberIds.toSet() == members().toSet().union([request.auth.uid].toSet())
-          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]))
+          && request.resource.data.memberIds.toSet() == members().toSet().union([uid()].toSet())
+          && membersChangedOnlyForMe())
+        ||
+        // Anyone in the project can leave it. An owner who leaves hands ownership on.
+        (uid() in members()
+          && changed().hasOnly(['memberIds', 'members', 'createdBy'])
+          && request.resource.data.memberIds.toSet() == members().toSet().difference([uid()].toSet())
+          && membersChangedOnlyForMe()
+          && (request.resource.data.createdBy == resource.data.createdBy
+              || (resource.data.createdBy == uid() && request.resource.data.createdBy in request.resource.data.memberIds)))
       );
 
-      function isMember() {
-        return allowed() && request.auth.uid in get(/databases/$(database)/documents/projects/$(pid)).data.memberIds;
-      }
+      // The owner can delete the project. So can the last person in it.
+      allow delete: if allowed() && uid() in members()
+        && (resource.data.createdBy == uid() || members().size() == 1);
+
+      function project() { return get(/databases/$(database)/documents/projects/$(pid)).data; }
+      function isMember() { return allowed() && uid() in project().memberIds; }
+      function isOwner() { return isMember() && project().createdBy == uid(); }
 
       // Places on the map. Anyone in the project can add or delete a place;
       // only the person who added a place can change it.
       match /places/{placeId} {
         allow read: if isMember();
         allow create: if isMember()
-          && request.resource.data.addedBy == request.auth.uid
+          && request.resource.data.addedBy == uid()
           && request.resource.data.addedByName == myName()
           && isText(request.resource.data.name, 80) && request.resource.data.name.size() > 0
           && isText(request.resource.data.icon, 8)
@@ -67,34 +88,43 @@ service cloud.firestore {
           && request.resource.data.lat is number && request.resource.data.lng is number
           && request.resource.data.lat > 1.1 && request.resource.data.lat < 1.5
           && request.resource.data.lng > 103.5 && request.resource.data.lng < 104.2;
+        // The person who added a place can edit it, or remove their name from it
+        // (this happens when they delete their account).
         allow update: if isMember()
-          && resource.data.addedBy == request.auth.uid
+          && resource.data.addedBy == uid()
           && request.resource.data.addedBy == resource.data.addedBy;
         allow delete: if isMember();
       }
 
       // One ballot per person, stored under their own user id.
       // Everyone in the project can see the votes; you can only change your own.
-      match /votes/{uid} {
+      match /votes/{voter} {
         allow read: if isMember();
         allow create, update: if isMember()
-          && request.auth.uid == uid
+          && uid() == voter
           && request.resource.data.votes is map
           && request.resource.data.name == myName();
-        allow delete: if isMember() && request.auth.uid == uid;
+        // Your own ballot, or any ballot when the owner deletes the whole project.
+        allow delete: if uid() == voter || isOwner();
       }
 
-      // Chat messages: post as yourself only; nobody can edit or delete them.
+      // Chat messages: post as yourself only; nobody can edit them.
       // 'rename' messages are the notices posted when someone renames the project.
       match /messages/{messageId} {
         allow read: if isMember();
         allow create: if isMember()
-          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.uid == uid()
           && request.resource.data.name == myName()
           && request.resource.data.createdAt == request.time
           && ((request.resource.data.kind == 'text' && isText(request.resource.data.text, 1000))
               || request.resource.data.kind == 'added'
               || (request.resource.data.kind == 'rename' && isText(request.resource.data.from, 60) && isText(request.resource.data.to, 60)));
+        // Reporting a message: add yourself to its reportedBy list, and change nothing else.
+        allow update: if isMember()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportedBy'])
+          && request.resource.data.reportedBy.toSet() == resource.data.get('reportedBy', []).toSet().union([uid()].toSet());
+        // Delete your own messages; the owner can remove any message.
+        allow delete: if resource.data.uid == uid() || isOwner();
       }
     }
   }

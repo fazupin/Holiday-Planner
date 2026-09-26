@@ -78,6 +78,42 @@ GitHub Pages is free for public repositories. For a private repository it needs 
 
 Each project has its own map, votes and chat, so you can run different trips with different groups. When a project's map is empty, you can tap **Add 9 popular places** to start with a list of well-known Singapore spots.
 
+## 8. Privacy and safety settings
+
+These match what the [Privacy Policy](privacy.html) and [Terms of Use](terms.html) promise.
+
+### Always: publish the latest rules
+Whenever `firestore.rules` changes, paste it into **Firestore → Rules** and click **Publish**.
+
+### Show "Wanderly" on the Google sign-in screen
+1. In Firebase, click the gear icon, then **Project settings → General**.
+2. Set **Public-facing name** to `Wanderly` and save.
+3. Optional, for a more polished sign-in screen: in the Google Cloud console (<https://console.cloud.google.com>, same Google account and project), open **Google Auth Platform → Branding**. Add:
+   - App home page: `https://fazupin.github.io/Holiday-Planner/`
+   - Privacy policy: `https://fazupin.github.io/Holiday-Planner/privacy.html`
+   - Terms of service: `https://fazupin.github.io/Holiday-Planner/terms.html`
+
+### Delete data automatically after 12 months
+Everything the app saves has an `expireAt` date 12 months ahead. Opening a project pushes its date back. To make Firebase delete expired data:
+
+1. In the Google Cloud console, open **Firestore → Time-to-live (TTL)**.
+2. Create a policy for each of these collection groups, all using the timestamp field `expireAt`:
+   - `projects`
+   - `places`
+   - `votes`
+   - `messages`
+
+If Google asks you to upgrade to a paid plan for this, skip it and tell me. We can remove old projects another way.
+
+### Stop bots (App Check), optional
+1. Go to <https://www.google.com/recaptcha/admin> and create a **reCAPTCHA v3** key. Add the domain `fazupin.github.io`, and `localhost` if you test locally.
+2. In Firebase, open **App Check**, register your web app with **reCAPTCHA v3**, and paste the **secret key**.
+3. Send the **site key** to Claude, or paste it into `window.APP_CHECK_SITE_KEY` in [js/firebase-config.js](js/firebase-config.js).
+4. After a few days, check that App Check's request graph shows most requests as verified. Then click **Enforce** for Cloud Firestore and Authentication.
+
+### Costs and budget alerts
+On the free **Spark** plan you can't be charged. If usage runs out, the app just stops working until the next day. Budget alerts only matter if you ever upgrade to the paid **Blaze** plan. In that case, set one up under **Usage and billing**.
+
 ## Testing on your own computer
 
 Google sign-in doesn't work if you double-click `index.html`, because it has to run on a web address. To test before publishing, start a small local web server in the project folder. For example, if you have Python installed:

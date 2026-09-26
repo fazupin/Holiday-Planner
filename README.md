@@ -32,6 +32,8 @@ To get exact coordinates on a phone: in the Google Maps app, press and hold on t
 
 ```
 ├── index.html
+├── privacy.html            Privacy Policy
+├── terms.html              Terms of Use
 ├── css/style.css
 ├── js/app.js               app code
 ├── js/firebase-config.js   your Firebase project settings

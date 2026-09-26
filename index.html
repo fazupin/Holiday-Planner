@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=19">
+  <link rel="stylesheet" href="css/style.css?v=20">
 </head>
 <body>
   <div class="app">
@@ -102,6 +102,8 @@
               <button class="primary" type="submit">Create</button>
             </form>
           </section>
+          <section class="card" id="accountCard" hidden></section>
+          <p class="legallinks"><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Use</a></p>
         </div>
         <div class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
           <section class="card chatcard">
@@ -125,6 +127,7 @@
       <p id="gateText">Sign in with your Google account to see the places and vote.</p>
       <button type="button" class="primary big" id="signIn">Sign in with Google</button>
       <p class="err" id="gateErr" hidden></p>
+      <p class="legal">By signing in you agree to the <a href="terms.html">Terms of Use</a> and <a href="privacy.html">Privacy Policy</a>.</p>
     </div>
   </div>
 
@@ -136,7 +139,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js?v=19"></script>
-  <script src="js/app.js?v=19"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+  <script src="js/firebase-config.js?v=20"></script>
+  <script src="js/app.js?v=20"></script>
 </body>
 </html>
