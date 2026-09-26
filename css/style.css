@@ -266,8 +266,18 @@ path.res { fill: var(--sea-in); stroke: none; }
 }
 #map.show-stations .stlabel span { display: block; }
 #map.streets-on .stlabel span { color: #44524D; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF; }
-.leaflet-tooltip { font: 400 12px var(--body); }
-.leaflet-tooltip .tiphint { color: #6B7A75; }
+/* Map name popups (stations, bus stops), styled like the app's cards */
+.leaflet-tooltip.wtip {
+  background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 7px 11px; font: 400 12px/1.35 var(--body); white-space: nowrap;
+}
+.leaflet-tooltip.wtip.leaflet-tooltip-top::before { border-top-color: var(--line); }
+.leaflet-tooltip.wtip.leaflet-tooltip-bottom::before { border-bottom-color: var(--line); }
+.wtip .tipname { display: block; font-family: var(--display); font-weight: 700; font-size: 14px; }
+.wtip .tipsub { display: block; color: var(--accent); font-weight: 700; font-size: 11px; letter-spacing: .04em; margin-top: 1px; }
+.wtip .tiphint { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+/* No focus box around map shapes (station tap areas) when clicked */
+.leaflet-container path.leaflet-interactive:focus { outline: none; }
 
 .maplabel { background: none; border: 0; pointer-events: none; }
 .maplabel span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: var(--muted); }

@@ -409,7 +409,9 @@
       const hit = L.circleMarker([st.lat, st.lng], {
         pane: 'mrtlines', radius: 11, stroke: false, fillColor: '#000000', fillOpacity: 0, bubblingMouseEvents: false,
       })
-        .bindTooltip(`${esc(st.name)} ${kind}${interchange ? '<br><small>Interchange</small>' : ''}<br><small class="tiphint">${ZOOM_HINT}</small>`, { direction: 'top', offset: [0, -6] })
+        .bindTooltip(
+          `<b class="tipname">${esc(st.name)}</b><span class="tipsub">${interchange ? 'Interchange' : `${kind} station`}</span><span class="tiphint">${ZOOM_HINT}</span>`,
+          { direction: 'top', offset: [0, -8], className: 'wtip' })
         .on('mouseover', () => dot.setStyle({ radius: size + 2.5, fillOpacity: 0.95 }))
         .on('mouseout', () => dot.setStyle(rest))
         // While adding a place, a tap near a station should still drop the pin there.
@@ -442,7 +444,7 @@
       const t = e.tags || {};
       const name = str(t.name || 'Bus stop', 60), code = str(t.asset_ref || t.ref || '', 10);
       L.marker([e.lat, e.lon], { pane: 'transit', keyboard: false, title: `Bus stop: ${name}`, icon: busIcon })
-        .bindTooltip(`Bus stop: ${esc(name)}${code ? '<br><small>Stop ' + esc(code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
+        .bindTooltip(`<b class="tipname">${esc(name)}</b><span class="tipsub">Bus stop${code ? ' ' + esc(code) : ''}</span>`, { direction: 'top', offset: [0, -8], className: 'wtip' })
         .addTo(busLayer);
     }
   }
