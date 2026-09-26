@@ -4,12 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Wanderly – Singapore Trip Picks</title>
+  <script>
+    // Apply the theme chosen in Settings before the page draws, so it doesn't flash.
+    try { var t = (JSON.parse(localStorage.getItem('wanderly-settings') || '{}')).theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=22">
+  <link rel="stylesheet" href="css/style.css?v=23">
 </head>
 <body>
   <div class="app">
@@ -33,6 +37,9 @@
       <div class="stats">
         <span class="inproj"><b id="nPlaces">0</b> places</span>
         <span class="inproj"><b id="nVoters">0</b> people voted</span>
+        <button type="button" class="iconbtn" id="settingsBtn" aria-label="Settings" aria-haspopup="dialog" title="Settings" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.03a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.94Z"/></svg>
+        </button>
         <span class="me" id="me" hidden>
           <img id="meAvatar" alt="" referrerpolicy="no-referrer">
           <span id="meName"></span>
@@ -136,6 +143,73 @@
     </div>
   </div>
 
+  <div class="settings" id="settings" hidden>
+    <div class="settingscard" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="settingshead">
+        <h2 id="settingsTitle">Settings</h2>
+        <button type="button" class="iconbtn" id="settingsClose" aria-label="Close settings">✕</button>
+      </div>
+      <p class="small">Saved on this device only.</p>
+
+      <h3>Appearance</h3>
+      <div class="setrow">
+        <span class="setlabel">Theme</span>
+        <div class="seg" role="radiogroup" aria-label="Theme" data-setting="theme">
+          <button type="button" role="radio" data-value="system">Device</button>
+          <button type="button" role="radio" data-value="light">Light</button>
+          <button type="button" role="radio" data-value="dark">Dark</button>
+        </div>
+      </div>
+
+      <h3>Map</h3>
+      <div class="setrow">
+        <span class="setlabel">Map style</span>
+        <div class="seg" role="radiogroup" aria-label="Map style" data-setting="mapMode">
+          <button type="button" role="radio" data-value="simple">Simple</button>
+          <button type="button" role="radio" data-value="detailed">Detailed</button>
+        </div>
+      </div>
+      <div class="setrow">
+        <span class="setlabel">MRT lines<small>Dotted lines and station dots, on both maps</small></span>
+        <button type="button" class="switch" role="switch" data-setting="mrtLines" aria-label="MRT lines"></button>
+      </div>
+      <div class="setrow">
+        <span class="setlabel">Station names<small>Shown when you zoom in</small></span>
+        <button type="button" class="switch" role="switch" data-setting="stationNames" aria-label="Station names"></button>
+      </div>
+      <div class="setrow">
+        <span class="setlabel">Bus stops<small>Detailed map, when zoomed in close</small></span>
+        <button type="button" class="switch" role="switch" data-setting="busStops" aria-label="Bus stops"></button>
+      </div>
+      <div class="setrow">
+        <span class="setlabel">Place names on pins</span>
+        <div class="seg" role="radiogroup" aria-label="Place names on pins" data-setting="placeLabels">
+          <button type="button" role="radio" data-value="zoom">When zoomed in</button>
+          <button type="button" role="radio" data-value="always">Always</button>
+        </div>
+      </div>
+
+      <h3>Chat</h3>
+      <div class="setrow">
+        <span class="setlabel">Enter sends message<small>Off: Enter starts a new line, and you tap Send</small></span>
+        <button type="button" class="switch" role="switch" data-setting="enterToSend" aria-label="Enter sends message"></button>
+      </div>
+
+      <h3>This device</h3>
+      <div class="setrow">
+        <span class="setlabel">Saved map data<small>MRT lines are saved for 30 days so the map loads faster</small></span>
+        <button type="button" class="ghost smallbtn" id="clearMapData">Clear</button>
+      </div>
+      <div class="setrow">
+        <span class="setlabel">Reset all settings</span>
+        <button type="button" class="ghost smallbtn" id="resetSettings">Reset</button>
+      </div>
+
+      <h3>About</h3>
+      <p class="small">Wanderly. <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Use</a></p>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" hidden></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -145,7 +219,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script src="js/firebase-config.js?v=22"></script>
-  <script src="js/app.js?v=22"></script>
+  <script src="js/firebase-config.js?v=23"></script>
+  <script src="js/app.js?v=23"></script>
 </body>
 </html>

@@ -86,6 +86,19 @@
   const RETAIN_MS = 365 * 864e5;
   const expiry = () => firebase.firestore.Timestamp.fromMillis(Date.now() + RETAIN_MS);
 
+  // ---------- settings (saved on this device only) ----------
+  const SETTING_DEFAULTS = { theme: 'system', mrtLines: true, stationNames: true, busStops: true, placeLabels: 'zoom', enterToSend: true };
+  const SETTING_CHOICES = { theme: ['system', 'light', 'dark'], placeLabels: ['zoom', 'always'] };
+  const settings = { ...SETTING_DEFAULTS };
+  try {
+    const saved = JSON.parse(localStorage.getItem('wanderly-settings') || '{}');
+    for (const k in SETTING_DEFAULTS) {
+      const v = saved[k];
+      if (SETTING_CHOICES[k] ? SETTING_CHOICES[k].includes(v) : typeof v === typeof SETTING_DEFAULTS[k]) settings[k] = v;
+    }
+  } catch { /* storage blocked or unreadable: use defaults */ }
+  const saveSettings = () => { try { localStorage.setItem('wanderly-settings', JSON.stringify(settings)); } catch { /* storage blocked */ } };
+
   // ---------- map ----------
   // Two layers: a street map from OpenFreeMap (roads, rail lines), and underneath it a simple
   // hand-drawn Singapore that shows if the street map can't load. Neither needs an API key.
@@ -208,7 +221,8 @@
     $('#map').classList.toggle('streets-on', showStreets);
     map.getPane('transit').style.display = detailed ? '' : 'none';
     if (showStreets) map.removeLayer(handDrawn); else if (!map.hasLayer(handDrawn)) handDrawn.addTo(map);
-    if (!map.hasLayer(mrtLines)) mrtLines.addTo(map); // MRT lines show on both maps
+    // MRT lines show on both maps, unless switched off in Settings.
+    if (settings.mrtLines) { if (!map.hasLayer(mrtLines)) mrtLines.addTo(map); } else map.removeLayer(mrtLines);
     for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === (detailed ? 'detailed' : 'simple')));
   }
   function setMapMode(m) {
@@ -228,6 +242,57 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#mapKey').hidden) showKey(false); });
   L.DomEvent.disableClickPropagation($('#mapKey'));
   L.DomEvent.disableScrollPropagation($('#mapKey'));
+
+  // ---------- Settings panel ----------
+  function applySettings() {
+    if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = settings.theme;
+    $('#map').classList.toggle('no-stnames', !settings.stationNames);
+    $('#map').classList.toggle('labels-always', settings.placeLabels === 'always');
+    applyMapMode();
+    loadBusStops().catch(() => {});
+  }
+  function renderSettings() {
+    for (const seg of document.querySelectorAll('#settings .seg')) {
+      const key = seg.dataset.setting;
+      const current = key === 'mapMode' ? mapMode : settings[key];
+      for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.value === current));
+    }
+    for (const sw of document.querySelectorAll('#settings .switch')) sw.setAttribute('aria-checked', String(!!settings[sw.dataset.setting]));
+  }
+  for (const seg of document.querySelectorAll('#settings .seg')) {
+    for (const b of seg.querySelectorAll('button')) {
+      b.onclick = () => {
+        const key = seg.dataset.setting;
+        if (key === 'mapMode') setMapMode(b.dataset.value);
+        else { settings[key] = b.dataset.value; saveSettings(); applySettings(); }
+        renderSettings();
+      };
+    }
+  }
+  for (const sw of document.querySelectorAll('#settings .switch')) {
+    sw.onclick = () => { settings[sw.dataset.setting] = !settings[sw.dataset.setting]; saveSettings(); applySettings(); renderSettings(); };
+  }
+  $('#clearMapData').onclick = () => {
+    try { localStorage.removeItem('wanderly-mrt-lines-v1'); localStorage.removeItem('wanderly-mrt-v1'); } catch { /* storage blocked */ }
+    toast('Cleared. The MRT lines will download again next time you open Wanderly.');
+  };
+  $('#resetSettings').onclick = () => {
+    Object.assign(settings, SETTING_DEFAULTS);
+    saveSettings();
+    setMapMode('simple');
+    applySettings(); renderSettings();
+    toast('Settings reset');
+  };
+  function showSettings(open) {
+    $('#settings').hidden = !open;
+    if (open) { renderSettings(); $('#settingsClose').focus(); }
+    else $('#settingsBtn').focus();
+  }
+  $('#settingsBtn').onclick = () => showSettings(true);
+  $('#settingsClose').onclick = () => showSettings(false);
+  $('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) showSettings(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#settings').hidden) showSettings(false); });
 
   // ---------- MRT stations and bus stops (OpenStreetMap data via Overpass, free, no key) ----------
   const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -357,7 +422,7 @@
   const BUS_ZOOM = 16;
   let busBounds = null, busTimer = 0, busSeq = 0;
   async function loadBusStops() {
-    if (mapMode !== 'detailed' || !projectId) return;
+    if (mapMode !== 'detailed' || !projectId || !settings.busStops) { busLayer.clearLayers(); busBounds = null; return; }
     if (map.getZoom() < BUS_ZOOM) { busLayer.clearLayers(); busBounds = null; return; }
     const view = map.getBounds();
     if (busBounds && busBounds.contains(view)) return;
@@ -375,7 +440,7 @@
     }
   }
   map.on('moveend', () => { clearTimeout(busTimer); busTimer = setTimeout(() => loadBusStops().catch(() => {}), 500); });
-  applyMapMode();
+  applySettings(); // first run: needs the MRT and bus stop layers above to exist
 
   const updateLabels = () => {
     const z = map.getZoom();
@@ -1016,7 +1081,7 @@
   }
 
   $('#cInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
+    if (e.key === 'Enter' && !e.shiftKey && settings.enterToSend) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
   $('#composer').addEventListener('submit', async e => {
     e.preventDefault();
@@ -1570,6 +1635,7 @@
       if (user) {
         $('#gate').hidden = true;
         $('#me').hidden = false;
+        $('#settingsBtn').hidden = false;
         $('#meName').textContent = user.displayName || user.email || 'You';
         if (user.photoURL) $('#meAvatar').src = user.photoURL; else $('#meAvatar').removeAttribute('src');
         startProjects().catch(onDenied);
@@ -1577,6 +1643,7 @@
         stopProjects();
         if (adding) stopAdd();
         $('#me').hidden = true;
+        $('#settingsBtn').hidden = true;
         $('#addBtn').hidden = true;
         showGate('Sign in with your Google account to see the places and vote.', false);
         renderAll(); renderChat();
