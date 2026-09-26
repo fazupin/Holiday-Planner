@@ -11,3 +11,6 @@ node_modules/
 
 # Secrets
 .env
+
+# Files shared with Claude (kept private, never pushed)
+inbox/
