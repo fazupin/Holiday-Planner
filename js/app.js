@@ -69,6 +69,7 @@
   const cfg = window.FIREBASE_CONFIG || {};
   const configured = !!cfg.apiKey && !/^PASTE/.test(cfg.apiKey);
   let auth = null, db = null;
+  let projectId = null; // the project on screen; null means the start page (your projects)
   if (configured && window.firebase) {
     firebase.initializeApp(cfg);
     auth = firebase.auth();
@@ -191,7 +192,7 @@
   let mapMode = 'simple';
   try { if (localStorage.getItem('wanderly-map-mode') === 'detailed') mapMode = 'detailed'; } catch { /* storage blocked */ }
   function applyMapMode() {
-    const detailed = mapMode === 'detailed';
+    const detailed = mapMode === 'detailed' && !!projectId; // the start page always uses the simple map
     if (detailed) { try { addStreetMap(); } catch { streetsState = 'failed'; } }
     const showStreets = detailed && streetsState === 'ready';
     map.getPane('streets').style.display = showStreets ? '' : 'none';
@@ -199,7 +200,7 @@
     map.getPane('transit').style.display = detailed ? '' : 'none';
     if (showStreets) map.removeLayer(handDrawn); else if (!map.hasLayer(handDrawn)) handDrawn.addTo(map);
     if (!map.hasLayer(mrtLines)) mrtLines.addTo(map); // MRT lines show on both maps
-    for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mapMode));
+    for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === (detailed ? 'detailed' : 'simple')));
   }
   function setMapMode(m) {
     mapMode = m;
@@ -347,7 +348,7 @@
   const BUS_ZOOM = 16;
   let busBounds = null, busTimer = 0, busSeq = 0;
   async function loadBusStops() {
-    if (mapMode !== 'detailed') return;
+    if (mapMode !== 'detailed' || !projectId) return;
     if (map.getZoom() < BUS_ZOOM) { busLayer.clearLayers(); busBounds = null; return; }
     const view = map.getBounds();
     if (busBounds && busBounds.contains(view)) return;
@@ -391,7 +392,7 @@
   const markers = new Map();  // placeId -> { marker, key }
 
   // Projects: each has its own places, votes and chat, stored under projects/{id}/...
-  let projectId = null;       // the project on screen
+  // (projectId, the project on screen, is declared with the Firebase setup above.)
   let projects = [];          // projects I'm in
   let projectsLoaded = false;
   let projectsUnsub = null;
@@ -1051,8 +1052,6 @@
   }
 
   // ---------- projects ----------
-  const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
   const inviteLink = pid => `${location.origin}${location.pathname}?p=${encodeURIComponent(pid)}`;
 
   function cleanProject(doc) {
@@ -1077,21 +1076,19 @@
 
   async function startProjects() {
     stopProjects();
-    // Opening an invite link (?p=<project id>) adds you to that project.
-    const invited = new URLSearchParams(location.search).get('p');
-    if (invited) {
-      try { await joinProject(invited); lsSet('wanderly-project', invited); }
-      catch { toast("That invite link doesn't work. Ask your friend to send it again."); }
+    // Signing in lands on the start page (your projects). The one exception is a link with
+    // ?p=<project id>: an invite link, or a refresh while inside a project. That opens the
+    // project, joining it first if needed.
+    let pending = new URLSearchParams(location.search).get('p');
+    if (pending) {
+      try { await joinProject(pending); }
+      catch { pending = null; closeProject(); toast("That invite link doesn't work. Ask your friend to send it again."); }
     }
     projectsUnsub = db.collection('projects').where('memberIds', 'array-contains', me.uid).onSnapshot(snap => {
       projects = snap.docs.map(cleanProject).sort((a, b) => a.name.localeCompare(b.name));
       projectsLoaded = true;
-      if (!projectId || !currentProject()) {
-        const saved = lsGet('wanderly-project');
-        const pick = projects.find(p => p.id === saved) || projects[0];
-        if (pick) openProject(pick.id);
-        else { projectId = null; stopListening(); loaded = true; renderAll(); renderChat(); }
-      }
+      if (pending && projects.some(p => p.id === pending)) { const pid = pending; pending = null; openProject(pid); return; }
+      if (projectId && !currentProject()) closeProject(); // removed from it, or it's gone
       renderProjects();
     }, onDenied);
   }
@@ -1108,16 +1105,30 @@
     toast(`You joined ${str(snap.data().name, 60) || 'the project'}`);
   }
 
+  // Entering a project clears everything from the previous one before loading this one's
+  // places, votes and chat, so nothing from one group ever shows in another.
   function openProject(pid) {
     if (adding) stopAdd();
     projectId = pid;
-    selectedId = null;
-    lsSet('wanderly-project', pid);
-    // Keep the address bar pointing at this project, so copying it works as an invite link.
+    selectedId = null; renaming = false;
+    // Keep the address bar pointing at this project, so a refresh stays here.
     try { history.replaceState(null, '', `?p=${encodeURIComponent(pid)}`); } catch { /* not allowed here */ }
     assist();
     startListening();
     renderAll(); renderChat(); renderProjects();
+    showTab('vote');
+  }
+  // Back to the start page (your projects).
+  function closeProject() {
+    if (adding) stopAdd();
+    projectId = null;
+    selectedId = null; renaming = false;
+    try { history.replaceState(null, '', location.pathname); } catch { /* not allowed here */ }
+    assist();
+    stopListening();
+    loaded = true;
+    renderAll(); renderChat(); renderProjects();
+    showTab('project');
   }
 
   async function createProject(name) {
@@ -1145,10 +1156,22 @@
   }
   function renderProjects() {
     const p = currentProject();
-    $('#projTitle').textContent = p ? p.name : 'Wanderly';
+    const inProject = !!p;
+    $('#projTitle').textContent = p ? p.name : (projects.length ? 'Your projects' : 'Wanderly');
     document.title = p ? `${p.name} – Wanderly` : 'Wanderly';
+    $('#subText').textContent = inProject
+      ? "Suggest places in the chat, tap a pin to see what's there, then vote on where to go."
+      : 'Plan trips with your friends. Each project is one trip with its own map, votes and chat.';
 
-    $('#projMenu').hidden = !me || !projectsLoaded;
+    // Start page vs inside a project: only show project tools inside a project.
+    document.body.classList.toggle('in-project', inProject);
+    $('#tabVote').hidden = !inProject;
+    $('#tabChat').hidden = !inProject;
+    $('#tabProject').textContent = inProject ? 'Project' : 'Projects';
+    $('#projMenu').hidden = !me || !inProject;
+    $('#newProjCard').hidden = !me || inProject || !projectsLoaded || !projects.length;
+    if (!inProject) { showKey(false); showProjMenu(false); if (activeTab !== 'project') showTab('project'); }
+    applyMapMode();
     renderProjMenu();
 
     const av = $('#projAvatars');
@@ -1167,6 +1190,10 @@
   function renderProjMenu() {
     const list = $('#projList');
     list.replaceChildren();
+    const all = el('button', { type: 'button', class: 'projitem', role: 'menuitem' },
+      el('span', { class: 'tick', 'aria-hidden': 'true', text: '←' }), el('span', { class: 'pn', text: 'All projects' }));
+    all.onclick = () => { showProjMenu(false); closeProject(); };
+    list.append(all, el('div', { class: 'projsep', role: 'separator' }));
     for (const x of projects) {
       const item = el('button', { type: 'button', class: 'projitem', role: 'menuitemradio', 'aria-checked': String(x.id === projectId) },
         el('span', { class: 'tick', 'aria-hidden': 'true', text: x.id === projectId ? '✓' : '' }),
@@ -1178,7 +1205,7 @@
     if (projects.length) list.append(el('div', { class: 'projsep', role: 'separator' }));
     const add = el('button', { type: 'button', class: 'projitem new', role: 'menuitem' },
       el('span', { class: 'tick', 'aria-hidden': 'true', text: '+' }), el('span', { class: 'pn', text: 'New project' }));
-    add.onclick = () => { showProjMenu(false); showTab('project'); $('#newProjName').focus(); };
+    add.onclick = () => { showProjMenu(false); closeProject(); $('#newProjName').focus(); };
     list.append(add);
   }
   function showProjMenu(open) {
@@ -1202,11 +1229,10 @@
     const box = $('#projCard');
     box.replaceChildren();
     const p = currentProject();
-    if (!p) {
-      box.append(el('p', { class: 'eyebrow', text: 'Project' }), el('p', { class: 'empty', text: me ? "You're not in a project yet. Start one below, or open an invite link from a friend." : 'Sign in to see your projects.' }));
-      return;
-    }
-    box.append(el('p', { class: 'eyebrow', text: 'Project' }));
+    if (!p) { renderLobby(box); return; }
+    const back = el('button', { class: 'linkbtn backlink', type: 'button', text: '← All projects' });
+    back.onclick = closeProject;
+    box.append(back, el('p', { class: 'eyebrow', text: 'Project' }));
     if (renaming) {
       const input = el('input', { id: 'renameInput', maxlength: '60', 'aria-label': 'Project name', required: '' });
       input.value = p.name;
@@ -1250,16 +1276,50 @@
       el('p', { class: 'small', text: 'Anyone who opens this link and signs in with Google joins this project.' }));
   }
 
-  $('#newProjForm').addEventListener('submit', async e => {
+  // Start page: one big "Start a project" when you have none, otherwise your projects.
+  function renderLobby(box) {
+    if (!me) { box.append(el('p', { class: 'empty', text: 'Sign in to see your projects.' })); return; }
+    if (!projectsLoaded) { box.append(el('p', { class: 'empty', text: 'Loading your projects…' })); return; }
+    if (!projects.length) {
+      box.className = 'card startcard';
+      const input = el('input', { id: 'startName', maxlength: '60', placeholder: 'e.g. Singapore with uni friends', 'aria-label': 'Project name', required: '' });
+      const create = el('button', { class: 'primary big', type: 'submit', text: 'Start a project' });
+      const form = el('form', { class: 'startform' }, input, create);
+      form.onsubmit = e => submitNewProject(e, input, create);
+      box.append(
+        el('h2', { text: 'Start a project' }),
+        el('p', { text: 'A project is one trip with one group of friends. It has its own map, votes and chat, and only the people you invite can see it.' }),
+        form,
+        el('p', { class: 'small', text: 'Got an invite link from a friend? Open it and you’ll join their project.' }));
+      return;
+    }
+    box.className = 'card';
+    box.append(el('p', { class: 'eyebrow', text: `Your projects (${projects.length})` }));
+    const list = el('div', { class: 'projcards' });
+    for (const x of projects) {
+      const faces = el('span', { class: 'avatars' });
+      for (const m of x.members.slice(0, 4)) faces.append(avatar(m, 'hav'));
+      if (x.members.length > 4) faces.append(el('span', { class: 'hav more', text: `+${x.members.length - 4}` }));
+      const b = el('button', { class: 'projcard', type: 'button' },
+        el('span', { class: 'pcname', text: x.name }),
+        el('span', { class: 'pcmeta' }, faces, el('span', { class: 'small', text: `${x.members.length} ${x.members.length === 1 ? 'person' : 'people'}` })),
+        el('span', { class: 'pcgo', 'aria-hidden': 'true', text: '→' }));
+      b.onclick = () => openProject(x.id);
+      list.append(b);
+    }
+    box.append(list);
+  }
+
+  async function submitNewProject(e, input, btn) {
     e.preventDefault();
-    const input = $('#newProjName'), name = input.value.trim();
+    const name = input.value.trim();
     if (!name || !me) return;
-    const btn = e.target.querySelector('button');
     btn.disabled = true;
-    try { await createProject(name); input.value = ''; showTab('project'); }
+    try { await createProject(name); input.value = ''; }
     catch { toast("Couldn't create the project. Try again."); }
     finally { btn.disabled = false; }
-  });
+  }
+  $('#newProjForm').addEventListener('submit', e => submitNewProject(e, $('#newProjName'), e.target.querySelector('button')));
 
   // ---------- sign-in ----------
   function showGate(text, signedIn) {

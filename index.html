@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=18">
+  <link rel="stylesheet" href="css/style.css?v=19">
 </head>
 <body>
   <div class="app">
@@ -27,11 +27,11 @@
           </div>
           <div class="avatars" id="projAvatars" aria-label="People in this project"></div>
         </div>
-        <p class="sub">Suggest places in the chat, tap a pin to see what's there, then vote on where to go.</p>
+        <p class="sub" id="subText">Suggest places in the chat, tap a pin to see what's there, then vote on where to go.</p>
       </div>
       <div class="stats">
-        <span><b id="nPlaces">0</b> places</span>
-        <span><b id="nVoters">0</b> people voted</span>
+        <span class="inproj"><b id="nPlaces">0</b> places</span>
+        <span class="inproj"><b id="nVoters">0</b> people voted</span>
         <span class="me" id="me" hidden>
           <img id="meAvatar" alt="" referrerpolicy="no-referrer">
           <span id="meName"></span>
@@ -136,7 +136,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js?v=18"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/firebase-config.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>

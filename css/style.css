@@ -119,6 +119,32 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3vw, 
 .hav.initials, .pav.initials { display: grid; place-items: center; font: 700 12px var(--body); color: var(--ink); }
 .hav.more { display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink); background: var(--line); }
 
+/* Start page (no project open): hide the tools that only make sense inside a project */
+body:not(.in-project) .inproj,
+body:not(.in-project) #mapMode [data-mode="detailed"],
+body:not(.in-project) #keyBtn { display: none; }
+
+.startcard { padding: 24px 20px; }
+.startcard h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1.1; margin: 0; }
+.startcard > p { color: var(--muted); margin: 8px 0 0; }
+.startform { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 12px; }
+.startform input { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--paper); font-size: 16px; }
+.startform .primary.big { width: 100%; }
+
+.projcards { display: flex; flex-direction: column; gap: 8px; }
+.projcard {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name go" "meta go";
+  gap: 6px 10px; align-items: center; text-align: left;
+  border: 1px solid var(--line); background: var(--paper); border-radius: 12px; padding: 12px 14px;
+}
+.projcard:hover, .projcard:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.projcard .pcname { grid-area: name; font-family: var(--display); font-weight: 700; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projcard .pcmeta { grid-area: meta; display: flex; align-items: center; gap: 10px; }
+.projcard .pcmeta .small { margin: 0; }
+.projcard .pcmeta .hav { width: 24px; height: 24px; }
+.projcard .pcgo { grid-area: go; font-size: 18px; color: var(--accent); }
+.backlink { display: inline-block; margin-bottom: 8px; }
+
 /* Project tab */
 .cardtitle { font-family: var(--display); font-weight: 700; font-size: 16px; margin: 0; }
 .projhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
