@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable",
+    "blockReadsOutsideWorkingDirectories": true,
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(start *)",
+      "Bash(explorer *)",
+      "Bash(explorer.exe *)",
+      "Bash(open *)",
+      "Bash(xdg-open *)",
+      "Bash(cmd *)",
+      "Bash(cmd.exe *)",
+      "Bash(powershell *)",
+      "Bash(powershell.exe *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "PowerShell(Start-Process *)",
+      "PowerShell(start *)",
+      "PowerShell(saps *)",
+      "PowerShell(Invoke-Item *)",
+      "PowerShell(ii *)",
+      "PowerShell(explorer *)",
+      "PowerShell(explorer.exe *)",
+      "PowerShell(Invoke-WebRequest *)",
+      "PowerShell(iwr *)",
+      "PowerShell(Invoke-RestMethod *)",
+      "PowerShell(irm *)",
+      "PowerShell(curl *)",
+      "PowerShell(wget *)",
+      "PowerShell(Send-MailMessage *)"
+    ]
+  },
+  "disableClaudeAiConnectors": true
+}

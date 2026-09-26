@@ -1,5 +1,3 @@
-# Holiday-Planner
-A simple holiday planner web app for building itineraries, tracking budgets, and organising trips, built with HTML, CSS, and JavaScript.
 # Wanderly 🌴
 
 A lightweight holiday planner that runs in your browser. Plan trips day by day, keep bookings in one place, and stay on budget.
@@ -14,10 +12,24 @@ A lightweight holiday planner that runs in your browser. Plan trips day by day, 
 ## Getting started
 
 1. Clone the repo:
-   git clone https://github.com/your-username/wanderly.git
+   ```
+   git clone https://github.com/fazupin/Holiday-Planner.git
+   ```
 2. Open `index.html` in your browser.
 
 That's it. No installs or build steps required.
+
+## Project structure
+
+```
+├── index.html
+├── css/style.css
+├── js/app.js
+├── assets/        (icons, images, screenshots)
+├── README.md
+├── LICENSE
+└── .gitignore
+```
 
 ## Built with
 
@@ -27,4 +39,4 @@ That's it. No installs or build steps required.
 
 ## License
 
-MIT
+[MIT](LICENSE)
