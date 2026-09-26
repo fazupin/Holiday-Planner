@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=23">
+  <link rel="stylesheet" href="css/style.css?v=24">
 </head>
 <body>
   <div class="app">
@@ -40,11 +40,11 @@
         <button type="button" class="iconbtn" id="settingsBtn" aria-label="Settings" aria-haspopup="dialog" title="Settings" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.03a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.94Z"/></svg>
         </button>
-        <span class="me" id="me" hidden>
+        <button type="button" class="me" id="me" aria-haspopup="dialog" title="Your profile" hidden>
           <img id="meAvatar" alt="" referrerpolicy="no-referrer">
           <span id="meName"></span>
-          <button type="button" class="linkbtn" id="signOut">Sign out</button>
-        </span>
+          <span class="melink">Profile</span>
+        </button>
       </div>
     </header>
 
@@ -110,7 +110,6 @@
               <button class="primary" type="submit">Create</button>
             </form>
           </section>
-          <section class="card" id="accountCard" hidden></section>
           <p class="legallinks"><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Use</a></p>
         </div>
         <div class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
@@ -140,6 +139,37 @@
       <button type="button" class="primary big" id="signIn" disabled>Sign in with Google</button>
       <p class="err" id="gateErr" hidden></p>
       <p class="legal">By signing in you agree to the <a href="terms.html">Terms of Use</a> and <a href="privacy.html">Privacy Policy</a>.</p>
+    </div>
+  </div>
+
+  <div class="settings" id="profile" hidden>
+    <div class="settingscard" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+      <div class="settingshead">
+        <h2 id="profileTitle">Profile</h2>
+        <button type="button" class="iconbtn" id="profileClose" aria-label="Close profile">✕</button>
+      </div>
+      <div class="profilehead">
+        <img id="profAvatar" alt="" referrerpolicy="no-referrer">
+        <div>
+          <p class="profname" id="profName"></p>
+          <p class="small" id="profEmail"></p>
+        </div>
+      </div>
+      <p class="small">You sign in with Google, so Wanderly never sees your password. To change your name or photo, update your Google account.</p>
+
+      <h3>Account</h3>
+      <div class="setrow">
+        <span class="setlabel">Sign out<small>You can sign back in any time.</small></span>
+        <button type="button" class="ghost smallbtn" id="signOut">Sign out</button>
+      </div>
+      <div class="setrow deleterow">
+        <span class="setlabel">Delete my account<small>Removes you and your data from Wanderly.</small></span>
+        <div id="deleteBox"></div>
+      </div>
+
+      <h3>Legal</h3>
+      <a class="setrow linkrow" href="terms.html"><span class="setlabel">Terms of Use</span><span aria-hidden="true">›</span></a>
+      <a class="setrow linkrow" href="privacy.html"><span class="setlabel">Privacy Policy</span><span aria-hidden="true">›</span></a>
     </div>
   </div>
 
@@ -219,7 +249,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script src="js/firebase-config.js?v=23"></script>
-  <script src="js/app.js?v=23"></script>
+  <script src="js/firebase-config.js?v=24"></script>
+  <script src="js/app.js?v=24"></script>
 </body>
 </html>

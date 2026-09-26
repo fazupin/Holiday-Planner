@@ -1530,12 +1530,10 @@
     }
   }
   function renderAccount() {
-    const box = $('#accountCard');
-    box.hidden = !me || !!projectId || !projectsLoaded;
-    if (box.hidden || deletingAccount) return;
-    box.replaceChildren(
-      el('h3', { class: 'cardtitle', text: 'Your account' }),
-      el('p', { class: 'small', text: `Signed in as ${me.displayName || 'you'}${me.email ? ` (${me.email})` : ''} with Google.` }));
+    // Lives in the Profile panel.
+    const box = $('#deleteBox');
+    if (!me || deletingAccount) return;
+    box.replaceChildren();
     const del = el('button', { class: 'danger', type: 'button', text: 'Delete my account' });
     const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel', hidden: '' });
     const note = el('p', { class: 'small', hidden: '' });
@@ -1552,6 +1550,7 @@
       try {
         await deleteAccount(msg => { note.textContent = msg; });
         deletingAccount = false;
+        $('#profile').hidden = true;
         toast('Your account and data have been deleted.');
       } catch {
         deletingAccount = false;
@@ -1614,7 +1613,22 @@
       const err = $('#gateErr'); err.textContent = authErrorText(e); err.hidden = false;
     }
   };
-  $('#signOut').onclick = () => auth && auth.signOut();
+  $('#signOut').onclick = () => { $('#profile').hidden = true; if (auth) auth.signOut(); };
+
+  // Profile panel: opens from your name and photo in the header.
+  function showProfile(open) {
+    $('#profile').hidden = !open;
+    if (!open) { $('#me').focus(); return; }
+    $('#profName').textContent = (me && me.displayName) || 'You';
+    $('#profEmail').textContent = (me && me.email) || '';
+    if (me && me.photoURL) $('#profAvatar').src = me.photoURL; else $('#profAvatar').removeAttribute('src');
+    renderAccount();
+    $('#profileClose').focus();
+  }
+  $('#me').onclick = () => showProfile(true);
+  $('#profileClose').onclick = () => showProfile(false);
+  $('#profile').addEventListener('click', e => { if (e.target === e.currentTarget && !deletingAccount) showProfile(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#profile').hidden && !deletingAccount) showProfile(false); });
 
   renderAll();
   renderChat();
