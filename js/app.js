@@ -300,29 +300,60 @@
       if (!unique.has(key) || unique.get(key).stops.length < line.stops.length) unique.set(key, line);
     }
     lines = [...unique.values()];
+    // Each line records its own platform, so at an interchange (Bugis, Promenade, Bayfront...)
+    // the lines' points sit a few hundred metres apart. Merge every stop with the same station
+    // name into one point, so all the lines meet exactly at the station.
+    const stationKey = (lat, lng, name) => {
+      const n = String(name || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\b(mrt|lrt|station)\b/g, '').replace(/\s+/g, ' ').trim();
+      return n || `${lat.toFixed(3)},${lng.toFixed(3)}`;
+    };
+    const stations = new Map(); // key -> { lat, lng, name, count, colours:Set, mrt, lrt }
+    for (const line of lines) {
+      for (const [lat, lng, name] of line.stops) {
+        const key = stationKey(lat, lng, name);
+        const st = stations.get(key) || { latSum: 0, lngSum: 0, count: 0, name, colours: new Set(), mrt: false, lrt: false };
+        st.latSum += lat; st.lngSum += lng; st.count += 1;
+        st.colours.add(line.colour);
+        if (line.lrt) st.lrt = true; else st.mrt = true;
+        if (!st.name && name) st.name = name;
+        stations.set(key, st);
+      }
+    }
+    for (const st of stations.values()) { st.lat = st.latSum / st.count; st.lng = st.lngSum / st.count; }
+    const at = (lat, lng, name) => { const st = stations.get(stationKey(lat, lng, name)); return [st.lat, st.lng]; };
+
     // Draw LRT first so the MRT lines sit on top.
     lines.sort((a, b) => Number(b.lrt) - Number(a.lrt));
     // Faint dotted lines: a hint of each line's colour without overpowering the map.
     for (const line of lines) {
-      const pts = line.stops.map(s => [s[0], s[1]]);
-      L.polyline(pts, {
+      L.polyline(line.stops.map(s => at(s[0], s[1], s[2])), {
         pane: 'mrtlines', color: line.colour, weight: line.lrt ? 1.5 : 2.2,
         opacity: line.lrt ? 0.3 : 0.45, dashArray: '0.1 6', lineCap: 'round', lineJoin: 'round', interactive: false,
       }).addTo(mrtLines);
     }
-    const seen = new Set();
-    for (const line of lines) {
-      for (const [lat, lng, name] of line.stops) {
-        const key = name || `${lat.toFixed(3)},${lng.toFixed(3)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const dot = L.circleMarker([lat, lng], {
-          pane: 'mrtlines', radius: line.lrt ? 1.8 : 2.4, stroke: false,
-          fillColor: line.colour, fillOpacity: line.lrt ? 0.35 : 0.5, bubblingMouseEvents: false,
-        });
-        if (name) dot.bindTooltip(`${esc(name)} ${line.lrt ? 'LRT' : 'MRT'}`, { direction: 'top', offset: [0, -4] });
-        dot.addTo(mrtLines);
-      }
+
+    // Station dots. Each small visible dot has a larger invisible circle around it, so the
+    // mouse or a finger doesn't have to land exactly on the dot to show the station name.
+    for (const st of stations.values()) {
+      const interchange = st.colours.size > 1;
+      const colour = interchange ? '#5B6B66' : [...st.colours][0];
+      const size = interchange ? 3.2 : st.mrt ? 2.4 : 1.8;
+      const rest = { radius: size, fillOpacity: interchange ? 0.7 : st.mrt ? 0.5 : 0.35 };
+      const dot = L.circleMarker([st.lat, st.lng], {
+        pane: 'mrtlines', stroke: interchange, color: '#FFFFFF', weight: 1, fillColor: colour,
+        interactive: false, ...rest,
+      }).addTo(mrtLines);
+      if (!st.name) continue;
+      const kind = st.mrt && st.lrt ? 'MRT/LRT' : st.lrt ? 'LRT' : 'MRT';
+      const hit = L.circleMarker([st.lat, st.lng], {
+        pane: 'mrtlines', radius: 11, stroke: false, fillColor: '#000000', fillOpacity: 0, bubblingMouseEvents: false,
+      })
+        .bindTooltip(`${esc(st.name)} ${kind}${interchange ? '<br><small>Interchange</small>' : ''}`, { direction: 'top', offset: [0, -6] })
+        .on('mouseover', () => dot.setStyle({ radius: size + 2.5, fillOpacity: 0.95 }))
+        .on('mouseout', () => dot.setStyle(rest))
+        // While adding a place, a tap near a station should still drop the pin there.
+        .on('click', e => { if (adding) handleMapClick(e.latlng); })
+        .addTo(mrtLines);
     }
   }
   loadMrtLines().catch(() => { /* the simple map works without the lines */ });
