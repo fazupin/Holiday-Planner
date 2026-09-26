@@ -97,26 +97,26 @@ path.res { fill: var(--sea-in); stroke: none; }
 .mapmode button { border: 0; background: none; border-radius: 7px; padding: 6px 12px; font-weight: 700; font-size: 13px; color: var(--muted); }
 .mapmode button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
-/* MRT/LRT stations and bus stops */
+/* Bus stops (detailed map) */
 .transit { background: none; border: 0; }
 .transit .tsym {
   display: grid; place-items: center;
-  width: 18px; height: 18px; border-radius: 5px;
-  background: #FFFFFF; font: 700 11px/1 var(--body);
+  width: 16px; height: 16px; margin: 1px; border-radius: 4px;
+  background: #FFFFFF; border: 1.5px solid #2F6FC7; color: #2F6FC7;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
 }
-.transit.mrt .tsym { border: 2px solid #D42E12; color: #D42E12; }
-.transit.lrt .tsym { border: 2px solid #748477; color: #748477; }
-.transit.bus .tsym { width: 16px; height: 16px; margin: 1px; border-radius: 50%; border: 1.5px solid #2F6FC7; font-size: 9px; }
-.transit .tname {
-  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
-  white-space: nowrap; font: 700 11px var(--body); color: #1B2624;
-  text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF;
-  display: none; pointer-events: none;
+.transit .tsym svg { width: 11px; height: 11px; display: block; }
+
+/* MRT/LRT station names (both maps), shown when zoomed in */
+.stlabel { background: none; border: 0; pointer-events: none; }
+.stlabel span {
+  position: absolute; left: 7px; top: 0; transform: translateY(-50%);
+  white-space: nowrap; font: 700 11px var(--body); color: var(--muted);
+  text-shadow: 0 0 3px var(--paper), 0 0 3px var(--paper), 0 0 3px var(--paper);
+  display: none;
 }
-.transit.mrt, .transit.lrt { display: none; }
-#map.show-mrt .transit.mrt, #map.show-mrt .transit.lrt { display: block; }
-#map.show-stations .transit .tname { display: block; }
+#map.show-stations .stlabel span { display: block; }
+#map.streets-on .stlabel span { color: #44524D; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF; }
 .leaflet-tooltip { font: 400 12px var(--body); }
 
 .maplabel { background: none; border: 0; pointer-events: none; }

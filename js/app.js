@@ -195,9 +195,10 @@
     if (detailed) { try { addStreetMap(); } catch { streetsState = 'failed'; } }
     const showStreets = detailed && streetsState === 'ready';
     map.getPane('streets').style.display = showStreets ? '' : 'none';
+    $('#map').classList.toggle('streets-on', showStreets);
     map.getPane('transit').style.display = detailed ? '' : 'none';
     if (showStreets) map.removeLayer(handDrawn); else if (!map.hasLayer(handDrawn)) handDrawn.addTo(map);
-    if (showStreets) map.removeLayer(mrtLines); else if (!map.hasLayer(mrtLines)) mrtLines.addTo(map);
+    if (!map.hasLayer(mrtLines)) mrtLines.addTo(map); // MRT lines show on both maps
     for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mapMode));
   }
   function setMapMode(m) {
@@ -220,45 +221,14 @@
   };
   const cacheSet = (key, data) => { try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* storage full or blocked */ } };
 
-  const mrtLayer = L.layerGroup().addTo(map);
   const busLayer = L.layerGroup().addTo(map);
-  const transitIcon = (cls, symbol, label) => L.divIcon({
-    className: 'transit ' + cls,
-    html: `<span class="tsym">${symbol}</span>${label ? `<span class="tname">${esc(label)}</span>` : ''}`,
-    iconSize: [18, 18], iconAnchor: [9, 9],
-  });
+  // A small bus drawing (not an emoji, which can look like a train at this size).
+  const BUS_SVG = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="8" height="8" rx="1.6" fill="currentColor"/><rect x="3.2" y="2.8" width="5.6" height="3" rx=".5" fill="#fff"/><circle cx="4" cy="7.6" r=".8" fill="#fff"/><circle cx="8" cy="7.6" r=".8" fill="#fff"/><rect x="3" y="9.5" width="1.6" height="1.5" rx=".4" fill="currentColor"/><rect x="7.4" y="9.5" width="1.6" height="1.5" rx=".4" fill="currentColor"/></svg>';
+  const busIcon = L.divIcon({ className: 'transit bus', html: `<span class="tsym">${BUS_SVG}</span>`, iconSize: [18, 18], iconAnchor: [9, 9] });
 
-  async function loadMrt() {
-    let stations = cacheGet('wanderly-mrt-v1', 7 * 864e5);
-    if (!stations) {
-      const els = await overpass(`[out:json][timeout:25];
-        (node["railway"="station"]["station"~"subway|light_rail"](1.15,103.6,1.48,104.1);
-         node["public_transport"="station"]["subway"="yes"](1.15,103.6,1.48,104.1););
-        out body;`);
-      const seen = new Set();
-      stations = [];
-      for (const e of els) {
-        const t = e.tags || {};
-        const name = str(t['name:en'] || t.name || '', 60).replace(/ (MRT|LRT) Station$/i, '');
-        if (!name || seen.has(name) || !isFinite(e.lat)) continue;
-        seen.add(name);
-        stations.push({ name, lat: e.lat, lng: e.lon, lrt: t.station === 'light_rail', code: str(t.ref || '', 30).replace(/;/g, ' / ') });
-      }
-      if (stations.length) cacheSet('wanderly-mrt-v1', stations);
-    }
-    for (const s of stations) {
-      L.marker([s.lat, s.lng], {
-        pane: 'transit', keyboard: false,
-        title: `${s.name} ${s.lrt ? 'LRT' : 'MRT'}${s.code ? ' (' + s.code + ')' : ''}`,
-        icon: transitIcon(s.lrt ? 'lrt' : 'mrt', 'M', s.name),
-      }).bindTooltip(`${esc(s.name)} ${s.lrt ? 'LRT' : 'MRT'}${s.code ? '<br><small>' + esc(s.code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
-        .addTo(mrtLayer);
-    }
-  }
-  loadMrt().catch(() => { /* stations are a nice-to-have */ });
-
-  // MRT/LRT lines for the simple map: stations joined in order, in each line's official colour.
-  map.createPane('mrtlines').style.zIndex = 160; // above the hand-drawn land, below the street map
+  // MRT/LRT lines and stations (both maps): stations joined in order, in each line's official colour.
+  map.createPane('mrtlines').style.zIndex = 190; // above the hand-drawn land and the street map
+  map.createPane('stationlabels').style.zIndex = 195;
   const mrtLines = L.layerGroup();
   const LINE_COLOURS = { NS: '#D42E12', EW: '#009645', CG: '#009645', NE: '#9900AA', CC: '#FA9E0D', CE: '#FA9E0D', DT: '#005EC4', TE: '#9D5B25' };
   const hexColour = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '');
@@ -344,6 +314,11 @@
         interactive: false, ...rest,
       }).addTo(mrtLines);
       if (!st.name) continue;
+      // Station name next to the dot, shown when zoomed in (see .stlabel in the CSS).
+      L.marker([st.lat, st.lng], {
+        pane: 'stationlabels', interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'stlabel', html: `<span>${esc(st.name)}</span>`, iconSize: null }),
+      }).addTo(mrtLines);
       const kind = st.mrt && st.lrt ? 'MRT/LRT' : st.lrt ? 'LRT' : 'MRT';
       const hit = L.circleMarker([st.lat, st.lng], {
         pane: 'mrtlines', radius: 11, stroke: false, fillColor: '#000000', fillOpacity: 0, bubblingMouseEvents: false,
@@ -374,8 +349,8 @@
     for (const e of els.slice(0, 400)) {
       const t = e.tags || {};
       const name = str(t.name || 'Bus stop', 60), code = str(t.asset_ref || t.ref || '', 10);
-      L.marker([e.lat, e.lon], { pane: 'transit', keyboard: false, title: name, icon: transitIcon('bus', '🚌', '') })
-        .bindTooltip(`${esc(name)}${code ? '<br><small>Stop ' + esc(code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
+      L.marker([e.lat, e.lon], { pane: 'transit', keyboard: false, title: `Bus stop: ${name}`, icon: busIcon })
+        .bindTooltip(`Bus stop: ${esc(name)}${code ? '<br><small>Stop ' + esc(code) + '</small>' : ''}`, { direction: 'top', offset: [0, -8] })
         .addTo(busLayer);
     }
   }
@@ -385,8 +360,7 @@
   const updateLabels = () => {
     const z = map.getZoom();
     $('#map').classList.toggle('show-labels', z >= 14);
-    $('#map').classList.toggle('show-stations', z >= 13);
-    $('#map').classList.toggle('show-mrt', z >= 12);
+    $('#map').classList.toggle('show-stations', z >= 13.5);
   };
   map.on('zoomend', updateLabels);
   updateLabels();
