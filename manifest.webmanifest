@@ -1,0 +1,13 @@
+{
+  "name": "Wanderly",
+  "short_name": "Wanderly",
+  "description": "Plan trips with friends: suggest places, vote and chat.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "browser",
+  "background_color": "#F4F7F4",
+  "theme_color": "#9C3D86",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

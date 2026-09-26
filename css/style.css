@@ -547,3 +547,53 @@ body.docpage { height: auto; }
 @media (prefers-reduced-motion: reduce) {
   .spin { animation: none; }
 }
+
+/* ---------- phones ----------
+   Keep this section last so it overrides the desktop styles above.
+   When adding new UI, check it here too. */
+@media (max-width: 860px) {
+  .mapwrap { height: min(58svh, 520px); }
+  .msgs { max-height: 55svh; }
+}
+@media (max-width: 600px) {
+  /* iPhones zoom into text boxes with text under 16px, so use 16px. */
+  input, textarea, select { font-size: 16px !important; }
+
+  /* Header: stack, smaller title, compact profile chip. */
+  .top { flex-direction: column; align-items: stretch; gap: 10px; }
+  h1 { font-size: 24px; }
+  .sub { font-size: 13px; }
+  .projrow { gap: 8px; }
+  .projbtn { padding: 7px 10px; }
+  .stats { justify-content: space-between; gap: 8px 12px; }
+  .stats .me { margin-left: auto; }
+  #meName { display: none; }
+  .me { padding: 3px 12px 3px 3px; min-height: 36px; }
+  .iconbtn { width: 38px; height: 38px; }
+
+  /* Map controls: finger-sized, and the key fits the screen. */
+  .addbtn { top: 10px; left: 10px; padding: 8px 12px; font-size: 14px; }
+  .hint { top: 58px; white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 24px); }
+  .mapctl { left: 10px; bottom: 10px; }
+  .mapmode button { padding: 8px 12px; }
+  .keybtn { padding: 0 14px; min-height: 38px; }
+  .mapkey { left: 10px; right: 10px; width: auto; bottom: 58px; max-height: calc(100% - 120px); }
+
+  /* Panel */
+  .tabs button { padding: 10px 6px; font-size: 14px; }
+  .card { padding: 14px; }
+  .row { padding: 10px 6px; }
+  .vbtn { padding: 12px 8px; }
+  .danger, .row2 .ghost { min-height: 38px; }
+  .msgbtn { padding: 4px 0; }
+  .composer { padding: 10px 12px 12px; }
+
+  /* Settings and Profile panels fill most of the screen. */
+  .settings { padding: 10px; align-items: end; }
+  .settingscard { max-height: calc(100svh - 20px); border-radius: 16px; padding: 18px 16px 22px; }
+  .setrow:has(.seg) { flex-direction: column; align-items: flex-start; }
+  .seg button { padding: 8px 12px; }
+
+  /* Legal pages */
+  .doc { padding-block: 20px 48px; }
+}
