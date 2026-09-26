@@ -103,6 +103,9 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3vw, 
 /* Project name, switcher and member pictures in the header */
 .projrow { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 2px; }
 .projrow h1 { margin: 0; }
+/* Start page: the Wanderly logo (pin icon + name) in place of a project name */
+.projrow h1.logo { display: inline-flex; align-items: center; gap: 12px; }
+.logoicon { width: 1.15em; height: 1.15em; border-radius: 26%; flex: none; box-shadow: var(--shadow); }
 .projmenu { position: relative; }
 .projbtn {
   display: inline-flex; align-items: center; gap: 6px;

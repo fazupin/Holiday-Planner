@@ -1325,7 +1325,11 @@
   function renderProjects() {
     const p = currentProject();
     const inProject = !!p;
-    $('#projTitle').textContent = p ? p.name : (projects.length ? 'Your projects' : 'Wanderly');
+    // Inside a project: its name. On the start page: the Wanderly logo.
+    const title = $('#projTitle');
+    title.classList.toggle('logo', !p);
+    if (p) title.textContent = p.name;
+    else title.replaceChildren(el('img', { class: 'logoicon', src: 'assets/icon.svg', alt: '' }), el('span', { text: 'Wanderly' }));
     document.title = p ? `${p.name} – Wanderly` : 'Wanderly';
     $('#subText').textContent = inProject
       ? "Suggest places in the chat, tap a pin to see what's there, then vote on where to go."
