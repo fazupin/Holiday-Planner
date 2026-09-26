@@ -82,10 +82,33 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3vw, 
 /* Project name, switcher and member pictures in the header */
 .projrow { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 2px; }
 .projrow h1 { margin: 0; }
-.projselect {
+.projmenu { position: relative; }
+.projbtn {
+  display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--line); background: var(--card); color: var(--ink);
-  border-radius: 10px; padding: 6px 10px; font-weight: 700; font-size: 13px; max-width: 220px;
+  border-radius: 10px; padding: 6px 10px 6px 12px; font-weight: 700; font-size: 13px; box-shadow: var(--shadow);
 }
+.projbtn svg { width: 12px; height: 12px; transition: transform .15s; }
+.projbtn[aria-expanded="true"] { border-color: var(--accent); }
+.projbtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.projlist {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 1500;
+  min-width: 240px; max-width: min(320px, calc(100vw - 32px)); max-height: 60vh; overflow: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 6px; display: flex; flex-direction: column; gap: 2px;
+}
+.projitem {
+  width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  border: 0; background: none; border-radius: 8px; padding: 8px 10px; text-align: left; font-size: 14px;
+}
+.projitem:hover, .projitem:focus-visible { background: var(--accent-soft); outline: none; }
+.projitem .tick { color: var(--accent); font-weight: 700; text-align: center; }
+.projitem .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projitem[aria-checked="true"] .pn { font-weight: 700; }
+.projitem .pc { font: 400 11px var(--mono); color: var(--muted); }
+.projitem.new { color: var(--accent); font-weight: 700; }
+.projsep { height: 1px; background: var(--line); margin: 4px 6px; }
+@media (prefers-reduced-motion: reduce) { .projbtn svg { transition: none; } }
 .avatars { display: flex; align-items: center; cursor: pointer; }
 .avatars:empty { display: none; }
 .hav {

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body>
   <div class="app">
@@ -18,7 +18,13 @@
         <p class="brand">Wanderly</p>
         <div class="projrow">
           <h1 id="projTitle">Singapore Trip Picks</h1>
-          <select id="projSelect" class="projselect" aria-label="Switch project" hidden></select>
+          <div class="projmenu" id="projMenu" hidden>
+            <button type="button" class="projbtn" id="projBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="projList">
+              Switch project
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="projlist" id="projList" role="menu" aria-labelledby="projBtn" hidden></div>
+          </div>
           <div class="avatars" id="projAvatars" aria-label="People in this project"></div>
         </div>
         <p class="sub">Suggest places in the chat, tap a pin to see what's there, then vote on where to go.</p>
@@ -130,7 +136,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script src="js/firebase-config.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>

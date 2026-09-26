@@ -1148,13 +1148,8 @@
     $('#projTitle').textContent = p ? p.name : 'Wanderly';
     document.title = p ? `${p.name} – Wanderly` : 'Wanderly';
 
-    const sel = $('#projSelect');
-    sel.hidden = !me || !projectsLoaded;
-    sel.replaceChildren(
-      ...projects.map(x => el('option', { value: x.id, text: x.name })),
-      el('option', { value: '__new', text: '+ New project…' }));
-    if (!p) sel.prepend(el('option', { value: '', text: 'Choose a project', disabled: '' }));
-    sel.value = p ? p.id : '';
+    $('#projMenu').hidden = !me || !projectsLoaded;
+    renderProjMenu();
 
     const av = $('#projAvatars');
     av.replaceChildren();
@@ -1168,14 +1163,38 @@
     $('#addBtn').hidden = !me || !p;
     renderProjectCard();
   }
-  $('#projSelect').onchange = e => {
-    const v = e.target.value;
-    if (v === '__new') {
-      e.target.value = projectId || '';
-      showTab('project');
-      $('#newProjName').focus();
-    } else if (v && v !== projectId) openProject(v);
-  };
+  // Project switcher menu (styled to match the app, unlike the browser's own dropdown).
+  function renderProjMenu() {
+    const list = $('#projList');
+    list.replaceChildren();
+    for (const x of projects) {
+      const item = el('button', { type: 'button', class: 'projitem', role: 'menuitemradio', 'aria-checked': String(x.id === projectId) },
+        el('span', { class: 'tick', 'aria-hidden': 'true', text: x.id === projectId ? '✓' : '' }),
+        el('span', { class: 'pn', text: x.name }),
+        el('span', { class: 'pc', text: `${x.members.length} ${x.members.length === 1 ? 'person' : 'people'}` }));
+      item.onclick = () => { showProjMenu(false); if (x.id !== projectId) openProject(x.id); };
+      list.append(item);
+    }
+    if (projects.length) list.append(el('div', { class: 'projsep', role: 'separator' }));
+    const add = el('button', { type: 'button', class: 'projitem new', role: 'menuitem' },
+      el('span', { class: 'tick', 'aria-hidden': 'true', text: '+' }), el('span', { class: 'pn', text: 'New project' }));
+    add.onclick = () => { showProjMenu(false); showTab('project'); $('#newProjName').focus(); };
+    list.append(add);
+  }
+  function showProjMenu(open) {
+    $('#projList').hidden = !open;
+    $('#projBtn').setAttribute('aria-expanded', String(open));
+    if (open) (($('#projList').querySelector('[aria-checked="true"]')) || $('#projList').querySelector('button')).focus();
+  }
+  $('#projBtn').onclick = () => showProjMenu($('#projList').hidden);
+  $('#projList').addEventListener('keydown', e => {
+    const items = [...$('#projList').querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Escape') { showProjMenu(false); $('#projBtn').focus(); }
+  });
+  document.addEventListener('click', e => { if (!$('#projMenu').contains(e.target)) showProjMenu(false); });
 
   // Project tab: name (rename), people, invite link.
   let renaming = false;
