@@ -180,15 +180,17 @@
     }
     return { yes, no };
   }
+  // A place is "voted out" when more people said No than Yes. It stays until someone deletes it.
+  const isVotedOut = t => t.no.length > t.yes.length;
   const ranked = () => places.map(p => ({ p, t: tally(p.id) }))
     .sort((a, b) => (b.t.yes.length - b.t.no.length) - (a.t.yes.length - a.t.no.length)
       || b.t.yes.length - a.t.yes.length || a.p.name.localeCompare(b.p.name));
 
   // ---------- pins ----------
-  function pinIcon(icon, name, yes, selected, isDraft) {
+  function pinIcon(icon, name, yes, selected, isDraft, out) {
     return L.divIcon({
-      className: 'pin-wrap' + (selected ? ' selected' : ''),
-      html: `<div class="pin${selected ? ' sel' : ''}${isDraft ? ' draft' : ''}"><span class="emoji">${esc(icon)}</span>${yes ? `<span class="badge">${yes}</span>` : ''}</div>`
+      className: 'pin-wrap' + (selected ? ' selected' : '') + (out ? ' out' : ''),
+      html: `<div class="pin${selected ? ' sel' : ''}${isDraft ? ' draft' : ''}${out ? ' out' : ''}"><span class="emoji">${esc(icon)}</span>${yes ? `<span class="badge">${yes}</span>` : ''}</div>`
         + (name ? `<div class="plabel">${esc(name)}</div>` : ''),
       iconSize: [36, 36],
       iconAnchor: [18, 44],
@@ -198,8 +200,8 @@
     const seen = new Set();
     for (const p of places) {
       seen.add(p.id);
-      const yes = tally(p.id).yes.length, sel = p.id === selectedId;
-      const key = [p.icon, p.name, yes, sel, p.lat, p.lng].join('|');
+      const t = tally(p.id), yes = t.yes.length, sel = p.id === selectedId, out = isVotedOut(t);
+      const key = [p.icon, p.name, yes, sel, out, p.lat, p.lng].join('|');
       let it = markers.get(p.id);
       if (!it) {
         const marker = L.marker([p.lat, p.lng], { title: p.name, alt: p.name, riseOnHover: true })
@@ -209,9 +211,9 @@
         markers.set(p.id, it);
       }
       if (it.key !== key) {
-        it.marker.setIcon(pinIcon(p.icon, p.name, yes, sel, false));
+        it.marker.setIcon(pinIcon(p.icon, p.name, yes, sel, false, out));
         it.marker.setLatLng([p.lat, p.lng]);
-        it.marker.setZIndexOffset(sel ? 1000 : 0);
+        it.marker.setZIndexOffset(sel ? 1000 : out ? -500 : 0);
         it.key = key;
       }
     }
@@ -437,7 +439,9 @@
     const meta = [p.area, p.mrt].filter(Boolean).join(' · ');
     const gmaps = el('a', { href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener', text: 'Open in Google Maps' });
     const byline = p.addedByName ? `Suggested by ${p.addedBy === (me && me.uid) ? 'you' : p.addedByName}` : '';
-    box.append(el('div', { class: 'place' },
+    const out = isVotedOut(t);
+    box.append(el('div', { class: 'place' + (out ? ' out' : '') },
+      out ? el('p', { class: 'outnote', text: `Voted out: ${t.no.length} No vs ${t.yes.length} Yes. It's greyed out on the map. Anyone can delete it below, or votes can still change.` }) : null,
       el('div', { class: 'phead' },
         el('div', { class: 'bigicon', 'aria-hidden': 'true', text: p.icon }),
         el('div', {}, el('h2', { text: p.name }), meta ? el('p', { class: 'meta', text: meta }) : null,
@@ -506,13 +510,13 @@
     const box = $('#bulk');
     box.replaceChildren();
     if (!me) return;
-    const rejected = places.filter(p => { const t = tally(p.id); return t.no.length > t.yes.length; });
+    const rejected = places.filter(p => isVotedOut(tally(p.id)));
     if (!rejected.length) { bulkArmed = false; return; }
     const names = rejected.map(p => p.name).join(', ');
     if (!bulkArmed) {
-      const b = el('button', { class: 'danger', type: 'button', text: `Delete places voted No (${rejected.length})` });
+      const b = el('button', { class: 'danger', type: 'button', text: `Delete voted-out places (${rejected.length})` });
       b.onclick = () => { bulkArmed = true; renderBulk(); };
-      box.append(b, el('p', { class: 'small', text: 'Places with more No votes than Yes.' }));
+      box.append(b, el('p', { class: 'small', text: 'The greyed-out places, where more people voted No than Yes.' }));
       return;
     }
     const yes = el('button', { class: 'danger armed', type: 'button', text: `Yes, delete ${rejected.length}` });
@@ -544,10 +548,11 @@
     ranked().forEach(({ p, t }, i) => {
       const total = t.yes.length + t.no.length;
       const pct = n => `width:${total ? (n / total) * 100 : 0}%`;
-      const b = el('button', { class: 'row', type: 'button', 'aria-current': String(p.id === selectedId) },
+      const out = isVotedOut(t);
+      const b = el('button', { class: 'row' + (out ? ' out' : ''), type: 'button', 'aria-current': String(p.id === selectedId) },
         el('span', { class: 'pos', text: String(i + 1) }),
         el('span', { class: 'ic', 'aria-hidden': 'true', text: p.icon }),
-        el('span', { class: 'nm' }, p.name, el('span', { class: 'ar', text: p.area || coordText(p.lat, p.lng) })),
+        el('span', { class: 'nm' }, p.name, el('span', { class: 'ar', text: out ? 'Voted out' : (p.area || coordText(p.lat, p.lng)) })),
         el('span', { class: 'ct' }, el('span', { class: 'y', text: `${t.yes.length} yes` }), el('span', { class: 'n', text: `${t.no.length} no` })),
         el('span', { class: 'mini', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })));
       b.onclick = () => { if (adding) stopAdd(); select(p.id, true); };

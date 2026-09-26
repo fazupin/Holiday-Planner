@@ -121,6 +121,10 @@ path.res { fill: var(--sea-in); stroke: none; }
   border-radius: 999px; background: var(--yes); color: var(--card);
   font: 700 10px/18px var(--mono); text-align: center;
 }
+.pin.out { background: var(--line); border-color: var(--muted); opacity: .7; }
+.pin.out .emoji { filter: grayscale(1); opacity: .7; }
+.pin.out.sel { background: var(--muted); opacity: 1; }
+.pin-wrap.out .plabel { color: var(--muted); text-decoration: line-through; }
 .plabel {
   position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
   white-space: nowrap; font: 700 12px var(--body); color: var(--ink);
@@ -195,6 +199,12 @@ path.res { fill: var(--sea-in); stroke: none; }
 .row .ct { font: 500 12px var(--mono); font-variant-numeric: tabular-nums; display: flex; gap: 6px; }
 .ct .y { color: var(--yes); }
 .ct .n { color: var(--no); }
+.row.out .ic { filter: grayscale(1); opacity: .55; }
+.row.out .nm { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.row.out .ar { text-decoration: none; font-weight: 700; color: var(--no); display: block; }
+.row.out .ct, .row.out .mini { opacity: .6; }
+.outnote { margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; background: var(--line); color: var(--ink); font-size: 13px; }
+.place.out .bigicon { filter: grayscale(1); opacity: .6; }
 .row .mini { grid-column: 3 / 5; display: flex; height: 4px; border-radius: 999px; overflow: hidden; background: var(--line); }
 .empty { color: var(--muted); margin: 0; }
 
