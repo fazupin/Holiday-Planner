@@ -293,11 +293,13 @@
     }
     // Draw LRT first so the MRT lines sit on top.
     lines.sort((a, b) => Number(b.lrt) - Number(a.lrt));
+    // Faint dotted lines: a hint of each line's colour without overpowering the map.
     for (const line of lines) {
       const pts = line.stops.map(s => [s[0], s[1]]);
-      const w = line.lrt ? 2 : 3.5;
-      L.polyline(pts, { pane: 'mrtlines', color: '#FFFFFF', weight: w + 3, opacity: 0.9, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(mrtLines);
-      L.polyline(pts, { pane: 'mrtlines', color: line.colour, weight: w, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(mrtLines);
+      L.polyline(pts, {
+        pane: 'mrtlines', color: line.colour, weight: line.lrt ? 1.5 : 2.2,
+        opacity: line.lrt ? 0.3 : 0.45, dashArray: '0.1 6', lineCap: 'round', lineJoin: 'round', interactive: false,
+      }).addTo(mrtLines);
     }
     const seen = new Set();
     for (const line of lines) {
@@ -306,8 +308,8 @@
         if (seen.has(key)) continue;
         seen.add(key);
         const dot = L.circleMarker([lat, lng], {
-          pane: 'mrtlines', radius: line.lrt ? 2.5 : 3.5, color: '#2A3431', weight: 1.2,
-          fillColor: '#FFFFFF', fillOpacity: 1, bubblingMouseEvents: false,
+          pane: 'mrtlines', radius: line.lrt ? 1.8 : 2.4, stroke: false,
+          fillColor: line.colour, fillOpacity: line.lrt ? 0.35 : 0.5, bubblingMouseEvents: false,
         });
         if (name) dot.bindTooltip(`${esc(name)} ${line.lrt ? 'LRT' : 'MRT'}`, { direction: 'top', offset: [0, -4] });
         dot.addTo(mrtLines);
