@@ -9,14 +9,18 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=16">
+  <link rel="stylesheet" href="css/style.css?v=17">
 </head>
 <body>
   <div class="app">
     <header class="top">
       <div>
         <p class="brand">Wanderly</p>
-        <h1>Singapore Trip Picks</h1>
+        <div class="projrow">
+          <h1 id="projTitle">Singapore Trip Picks</h1>
+          <select id="projSelect" class="projselect" aria-label="Switch project" hidden></select>
+          <div class="avatars" id="projAvatars" aria-label="People in this project"></div>
+        </div>
         <p class="sub">Suggest places in the chat, tap a pin to see what's there, then vote on where to go.</p>
       </div>
       <div class="stats">
@@ -72,6 +76,7 @@
         <div class="tabs" role="tablist">
           <button role="tab" id="tabVote" aria-selected="true" aria-controls="paneVote" type="button">Places &amp; votes</button>
           <button role="tab" id="tabChat" aria-selected="false" aria-controls="paneChat" type="button">Chat <span class="unread" id="unread" hidden></span></button>
+          <button role="tab" id="tabProject" aria-selected="false" aria-controls="paneProject" type="button">Project</button>
         </div>
         <div class="pane" id="paneVote" role="tabpanel" aria-labelledby="tabVote">
           <section class="card" id="detail" aria-live="polite"></section>
@@ -79,6 +84,17 @@
             <h3>Ranked by votes</h3>
             <ul class="rows" id="rows"></ul>
             <div class="bulk" id="bulk"></div>
+          </section>
+        </div>
+        <div class="pane" id="paneProject" role="tabpanel" aria-labelledby="tabProject" hidden>
+          <section class="card" id="projCard"></section>
+          <section class="card" id="newProjCard">
+            <h3 class="cardtitle">Start a new project</h3>
+            <p class="small">Each project has its own map, votes and chat. Use one per trip or group.</p>
+            <form class="inlineform" id="newProjForm">
+              <input id="newProjName" maxlength="60" placeholder="e.g. Bali with uni friends" aria-label="New project name" required>
+              <button class="primary" type="submit">Create</button>
+            </form>
           </section>
         </div>
         <div class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
@@ -114,7 +130,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-config.js?v=16"></script>
-  <script src="js/app.js?v=16"></script>
+  <script src="js/firebase-config.js?v=17"></script>
+  <script src="js/app.js?v=17"></script>
 </body>
 </html>

@@ -390,6 +390,14 @@
   let unsubscribers = [];
   const markers = new Map();  // placeId -> { marker, key }
 
+  // Projects: each has its own places, votes and chat, stored under projects/{id}/...
+  let projectId = null;       // the project on screen
+  let projects = [];          // projects I'm in
+  let projectsLoaded = false;
+  let projectsUnsub = null;
+  const col = name => db.collection('projects').doc(projectId).collection(name);
+  const currentProject = () => projects.find(p => p.id === projectId) || null;
+
   function cleanPlace(doc) {
     const x = doc.data() || {};
     const lat = Number(x.lat), lng = Number(x.lng);
@@ -484,7 +492,7 @@
     ballots = { ...ballots, [me.uid]: { votes: mine, name: me.displayName || '', photo: me.photoURL || '' } };
     renderAll();
     voteChain = voteChain
-      .then(() => db.collection('votes').doc(me.uid).set({
+      .then(() => col('votes').doc(me.uid).set({
         votes: mine, name: me.displayName || null, photo: me.photoURL || '', updatedAt: now(),
       }))
       .catch(e => {
@@ -603,7 +611,7 @@
       };
       save.disabled = true; save.textContent = 'Saving…'; err.hidden = true;
       try {
-        const ref = await db.collection('places').add(doc);
+        const ref = await col('places').add(doc);
         postMessage({ kind: 'added', placeId: ref.id, placeName: doc.name, placeIcon: doc.icon }).catch(() => {});
         stopAdd();
         select(ref.id, false);
@@ -626,7 +634,7 @@
     try {
       const batch = db.batch();
       for (const s of STARTERS) {
-        batch.set(db.collection('places').doc(), {
+        batch.set(col('places').doc(), {
           ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter',
         });
       }
@@ -652,7 +660,12 @@
     const p = places.find(q => q.id === selectedId);
     if (!p) {
       const intro = el('div', { class: 'intro' });
-      if (!loaded) intro.append(el('h2', { text: 'Loading places…' }));
+      if (me && projectsLoaded && !projectId) {
+        const go = el('button', { class: 'primary', type: 'button', text: 'Start a project' });
+        go.onclick = () => { showTab('project'); $('#newProjName').focus(); };
+        intro.append(el('h2', { text: 'Start a project' }),
+          el('p', { text: 'A project holds one trip: its places, votes and chat. Create one, then send the invite link to your friends. If a friend already made one, ask them for the invite link.' }), go);
+      } else if (!loaded) intro.append(el('h2', { text: 'Loading places…' }));
       else if (!places.length) {
         const seed = el('button', { class: 'primary', type: 'button', text: 'Add 9 popular places' });
         seed.onclick = () => addStarters(seed);
@@ -723,7 +736,7 @@
         }
         del.disabled = true; cancel.hidden = true;
         try {
-          await db.collection('places').doc(p.id).delete();
+          await col('places').doc(p.id).delete();
           selectedId = null; renderAll(); toast(`Deleted ${p.name}`);
         } catch (x) {
           del.disabled = false; disarm();
@@ -756,7 +769,7 @@
       yes.disabled = no.disabled = true; yes.textContent = 'Deleting…';
       try {
         const batch = db.batch();
-        for (const p of rejected) batch.delete(db.collection('places').doc(p.id));
+        for (const p of rejected) batch.delete(col('places').doc(p.id));
         await batch.commit();
         bulkArmed = false;
         toast(`Deleted ${rejected.length} place${rejected.length === 1 ? '' : 's'}`);
@@ -804,15 +817,16 @@
   // ---------- tabs ----------
   function showTab(t) {
     activeTab = t;
-    $('#tabVote').setAttribute('aria-selected', String(t === 'vote'));
-    $('#tabChat').setAttribute('aria-selected', String(t === 'chat'));
-    $('#paneVote').hidden = t !== 'vote';
-    $('#paneChat').hidden = t !== 'chat';
+    for (const [tab, pane, name] of [['#tabVote', '#paneVote', 'vote'], ['#tabChat', '#paneChat', 'chat'], ['#tabProject', '#paneProject', 'project']]) {
+      $(tab).setAttribute('aria-selected', String(t === name));
+      $(pane).hidden = t !== name;
+    }
     if (t === 'chat') { const m = $('#msgs'); m.scrollTop = m.scrollHeight; }
     renderUnread();
   }
   $('#tabVote').onclick = () => showTab('vote');
   $('#tabChat').onclick = () => showTab('chat');
+  $('#tabProject').onclick = () => showTab('project');
   function renderUnread() {
     if (activeTab === 'chat') seenAt = Date.now();
     const n = messages.filter(m => m.createdAt > seenAt && m.uid !== (me && me.uid)).length;
@@ -854,8 +868,10 @@
         const see = el('button', { class: 'linkbtn', type: 'button', text: 'See it and vote' });
         see.onclick = () => (places.some(p => p.id === m.placeId) ? select(m.placeId, true) : toast('That place has been removed.'));
         body.append('added ', el('b', { text: `${m.placeIcon || '📍'} ${m.placeName || 'a place'}` }), ' to the vote. ', see);
+      } else if (m.kind === 'rename') {
+        body.append('renamed the project from ', el('b', { text: `"${m.from || 'Untitled'}"` }), ' to ', el('b', { text: `"${m.to || 'Untitled'}"` }), '.');
       } else body.append(linkify(m.text));
-      box.append(el('li', { class: 'msg' + (m.kind === 'added' ? ' added' : '') },
+      box.append(el('li', { class: 'msg' + (m.kind !== 'text' ? ' added' : '') },
         m.photo ? el('img', { class: 'av', src: m.photo, alt: '', referrerpolicy: 'no-referrer' }) : el('span'),
         el('div', {}, el('span', { class: 'who', text: who }), el('span', { class: 'when', text: whenText(m.createdAt) }), body)));
     }
@@ -863,7 +879,7 @@
   }
 
   function postMessage(extra) {
-    return db.collection('messages').add({
+    return col('messages').add({
       uid: me.uid, name: me.displayName || null, photo: me.photoURL || '', createdAt: now(), ...extra,
     });
   }
@@ -956,7 +972,7 @@
   $('#composer').addEventListener('submit', async e => {
     e.preventDefault();
     const input = $('#cInput'), text = input.value.trim();
-    if (!text || !db || !me) return;
+    if (!text || !db || !me || !projectId) return;
     const send = $('#cSend');
     send.disabled = true;
     try { await postMessage({ kind: 'text', text: str(text, 1000) }); }
@@ -1002,12 +1018,13 @@
   }
   function startListening() {
     stopListening();
-    unsubscribers.push(db.collection('places').onSnapshot(snap => {
+    if (!projectId) return;
+    unsubscribers.push(col('places').onSnapshot(snap => {
       places = snap.docs.map(cleanPlace).filter(Boolean);
       loaded = true;
       renderAll();
     }, onDenied));
-    unsubscribers.push(db.collection('votes').onSnapshot(snap => {
+    unsubscribers.push(col('votes').onSnapshot(snap => {
       const next = {};
       for (const doc of snap.docs) {
         const x = doc.data() || {};
@@ -1018,19 +1035,212 @@
       ballots = next;
       renderAll();
     }, onDenied));
-    unsubscribers.push(db.collection('messages').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
+    unsubscribers.push(col('messages').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
       messages = snap.docs.map(doc => {
         const x = doc.data({ serverTimestamps: 'estimate' }) || {};
         return {
           id: doc.id, uid: str(x.uid, 128), name: str(x.name, 60), photo: typeof x.photo === 'string' ? x.photo : '',
           createdAt: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now(),
-          kind: x.kind === 'added' ? 'added' : 'text', text: str(x.text, 1000),
+          kind: ['added', 'rename'].includes(x.kind) ? x.kind : 'text', text: str(x.text, 1000),
           placeId: str(x.placeId, 128), placeName: str(x.placeName, 80), placeIcon: str(x.placeIcon, 2),
+          from: str(x.from, 60), to: str(x.to, 60),
         };
       }).reverse();
       renderUnread(); renderChat();
     }, onDenied));
   }
+
+  // ---------- projects ----------
+  const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
+  const inviteLink = pid => `${location.origin}${location.pathname}?p=${encodeURIComponent(pid)}`;
+
+  function cleanProject(doc) {
+    const x = doc.data() || {};
+    const memberIds = Array.isArray(x.memberIds) ? x.memberIds.filter(id => typeof id === 'string') : [];
+    const info = x.members && typeof x.members === 'object' ? x.members : {};
+    const members = memberIds.map(uid => {
+      const m = info[uid] || {};
+      return { uid, name: str(m.name, 60) || 'Someone', photo: typeof m.photo === 'string' ? m.photo : '' };
+    });
+    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members };
+  }
+  const myMemberInfo = () => ({ name: me.displayName || null, photo: me.photoURL || '', joinedAt: now() });
+
+  function stopProjects() {
+    if (projectsUnsub) projectsUnsub();
+    projectsUnsub = null;
+    projects = []; projectsLoaded = false; projectId = null;
+    stopListening();
+    renderProjects();
+  }
+
+  async function startProjects() {
+    stopProjects();
+    // Opening an invite link (?p=<project id>) adds you to that project.
+    const invited = new URLSearchParams(location.search).get('p');
+    if (invited) {
+      try { await joinProject(invited); lsSet('wanderly-project', invited); }
+      catch { toast("That invite link doesn't work. Ask your friend to send it again."); }
+    }
+    projectsUnsub = db.collection('projects').where('memberIds', 'array-contains', me.uid).onSnapshot(snap => {
+      projects = snap.docs.map(cleanProject).sort((a, b) => a.name.localeCompare(b.name));
+      projectsLoaded = true;
+      if (!projectId || !currentProject()) {
+        const saved = lsGet('wanderly-project');
+        const pick = projects.find(p => p.id === saved) || projects[0];
+        if (pick) openProject(pick.id);
+        else { projectId = null; stopListening(); loaded = true; renderAll(); renderChat(); }
+      }
+      renderProjects();
+    }, onDenied);
+  }
+
+  async function joinProject(pid) {
+    const ref = db.collection('projects').doc(pid);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error('no such project');
+    if ((snap.data().memberIds || []).includes(me.uid)) return;
+    await ref.update({
+      memberIds: firebase.firestore.FieldValue.arrayUnion(me.uid),
+      [`members.${me.uid}`]: myMemberInfo(),
+    });
+    toast(`You joined ${str(snap.data().name, 60) || 'the project'}`);
+  }
+
+  function openProject(pid) {
+    if (adding) stopAdd();
+    projectId = pid;
+    selectedId = null;
+    lsSet('wanderly-project', pid);
+    // Keep the address bar pointing at this project, so copying it works as an invite link.
+    try { history.replaceState(null, '', `?p=${encodeURIComponent(pid)}`); } catch { /* not allowed here */ }
+    assist();
+    startListening();
+    renderAll(); renderChat(); renderProjects();
+  }
+
+  async function createProject(name) {
+    const ref = db.collection('projects').doc();
+    await ref.set({
+      name: str(name, 60), createdBy: me.uid, createdAt: now(),
+      memberIds: [me.uid], members: { [me.uid]: myMemberInfo() },
+    });
+    openProject(ref.id);
+    toast(`Created ${str(name, 60)}. Send your friends the invite link.`);
+  }
+
+  async function renameProject(newName) {
+    const p = currentProject();
+    if (!p || newName === p.name) return;
+    await db.collection('projects').doc(p.id).update({ name: str(newName, 60), renamedAt: now() });
+    await postMessage({ kind: 'rename', from: p.name, to: str(newName, 60) });
+  }
+
+  // Header: project name, switcher and member pictures.
+  function avatar(m, cls) {
+    return m.photo
+      ? el('img', { class: cls, src: m.photo, alt: '', title: m.name, referrerpolicy: 'no-referrer' })
+      : el('span', { class: cls + ' initials', title: m.name, text: (m.name || '?').trim().charAt(0).toUpperCase() });
+  }
+  function renderProjects() {
+    const p = currentProject();
+    $('#projTitle').textContent = p ? p.name : 'Wanderly';
+    document.title = p ? `${p.name} – Wanderly` : 'Wanderly';
+
+    const sel = $('#projSelect');
+    sel.hidden = !me || !projectsLoaded;
+    sel.replaceChildren(
+      ...projects.map(x => el('option', { value: x.id, text: x.name })),
+      el('option', { value: '__new', text: '+ New project…' }));
+    if (!p) sel.prepend(el('option', { value: '', text: 'Choose a project', disabled: '' }));
+    sel.value = p ? p.id : '';
+
+    const av = $('#projAvatars');
+    av.replaceChildren();
+    if (p) {
+      const shown = p.members.slice(0, 5);
+      for (const m of shown) av.append(avatar(m, 'hav'));
+      if (p.members.length > shown.length) av.append(el('span', { class: 'hav more', text: `+${p.members.length - shown.length}` }));
+      av.onclick = () => showTab('project');
+      av.title = `${p.members.length} ${p.members.length === 1 ? 'person' : 'people'} in this project`;
+    }
+    $('#addBtn').hidden = !me || !p;
+    renderProjectCard();
+  }
+  $('#projSelect').onchange = e => {
+    const v = e.target.value;
+    if (v === '__new') {
+      e.target.value = projectId || '';
+      showTab('project');
+      $('#newProjName').focus();
+    } else if (v && v !== projectId) openProject(v);
+  };
+
+  // Project tab: name (rename), people, invite link.
+  let renaming = false;
+  function renderProjectCard() {
+    const box = $('#projCard');
+    box.replaceChildren();
+    const p = currentProject();
+    if (!p) {
+      box.append(el('p', { class: 'eyebrow', text: 'Project' }), el('p', { class: 'empty', text: me ? "You're not in a project yet. Start one below, or open an invite link from a friend." : 'Sign in to see your projects.' }));
+      return;
+    }
+    box.append(el('p', { class: 'eyebrow', text: 'Project' }));
+    if (renaming) {
+      const input = el('input', { id: 'renameInput', maxlength: '60', 'aria-label': 'Project name', required: '' });
+      input.value = p.name;
+      const save = el('button', { class: 'primary', type: 'submit', text: 'Save' });
+      const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel' });
+      const form = el('form', { class: 'inlineform' }, input, save, cancel);
+      cancel.onclick = () => { renaming = false; renderProjectCard(); };
+      form.onsubmit = async e => {
+        e.preventDefault();
+        const name = input.value.trim();
+        if (!name) return;
+        save.disabled = true; save.textContent = 'Saving…';
+        try { await renameProject(name); renaming = false; renderProjectCard(); toast('Renamed. Everyone sees a note in the chat.'); }
+        catch { save.disabled = false; save.textContent = 'Save'; toast("Couldn't rename the project. Try again."); }
+      };
+      box.append(form, el('p', { class: 'small', text: 'Everyone in the project can rename it. A note is posted in the chat.' }));
+      setTimeout(() => { input.focus(); input.select(); });
+    } else {
+      const rename = el('button', { class: 'ghost small-btn', type: 'button', text: 'Rename' });
+      rename.onclick = () => { renaming = true; renderProjectCard(); };
+      box.append(el('div', { class: 'projhead' }, el('h2', { class: 'projname', text: p.name }), rename));
+    }
+
+    box.append(el('p', { class: 'eyebrow', text: `People (${p.members.length})` }));
+    const list = el('ul', { class: 'people' });
+    for (const m of p.members) {
+      const bits = [m.uid === me.uid ? 'you' : '', m.uid === p.createdBy ? 'started this project' : ''].filter(Boolean).join(', ');
+      list.append(el('li', {}, avatar(m, 'pav'), el('span', { class: 'pname', text: m.name }), bits ? el('span', { class: 'small', text: bits }) : null));
+    }
+    box.append(list);
+
+    box.append(el('p', { class: 'eyebrow', text: 'Invite friends' }));
+    const link = el('input', { class: 'invite', readonly: '', 'aria-label': 'Invite link', value: inviteLink(p.id) });
+    link.onfocus = () => link.select();
+    const copy = el('button', { class: 'primary', type: 'button', text: 'Copy link' });
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(link.value); toast('Invite link copied'); }
+      catch { link.focus(); link.select(); toast('Press Ctrl+C to copy the link'); }
+    };
+    box.append(el('div', { class: 'inlineform' }, link, copy),
+      el('p', { class: 'small', text: 'Anyone who opens this link and signs in with Google joins this project.' }));
+  }
+
+  $('#newProjForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input = $('#newProjName'), name = input.value.trim();
+    if (!name || !me) return;
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    try { await createProject(name); input.value = ''; showTab('project'); }
+    catch { toast("Couldn't create the project. Try again."); }
+    finally { btn.disabled = false; }
+  });
 
   // ---------- sign-in ----------
   function showGate(text, signedIn) {
@@ -1065,6 +1275,7 @@
 
   renderAll();
   renderChat();
+  renderProjects();
 
   if (location.protocol === 'file:') {
     showGate('Google sign-in only works when the app is on a website. Open the GitHub Pages link, or see SETUP.md to test it on your computer.', false);
@@ -1082,10 +1293,9 @@
         $('#me').hidden = false;
         $('#meName').textContent = user.displayName || user.email || 'You';
         if (user.photoURL) $('#meAvatar').src = user.photoURL; else $('#meAvatar').removeAttribute('src');
-        $('#addBtn').hidden = false;
-        startListening();
+        startProjects().catch(onDenied);
       } else {
-        stopListening();
+        stopProjects();
         if (adding) stopAdd();
         $('#me').hidden = true;
         $('#addBtn').hidden = true;

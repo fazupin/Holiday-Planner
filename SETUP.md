@@ -72,9 +72,11 @@ GitHub Pages is free for public repositories. For a private repository it needs 
 
 ## 7. Invite your friends
 
-Send them the GitHub Pages link. They tap **Sign in with Google**, and that's it. They don't need any other account.
+1. Open the app and sign in. Create a project for your trip (for example "Singapore with uni friends").
+2. Open the **Project** tab and tap **Copy link**.
+3. Send that invite link to your friends. When they open it and tap **Sign in with Google**, they join the project. They don't need any other account.
 
-Open the app first yourself. When the map is empty, you can tap **Add 9 popular places** to start with a list of well-known Singapore spots.
+Each project has its own map, votes and chat, so you can run different trips with different groups. When a project's map is empty, you can tap **Add 9 popular places** to start with a list of well-known Singapore spots.
 
 ## Testing on your own computer
 

@@ -8,6 +8,7 @@ A group trip planner that runs in your browser. Friends suggest places on a map 
 - Tap a pin to see things to do there, then vote **Yes** or **No**
 - Ranked list that puts the most-wanted places at the top, updated live
 - Group chat: paste a Google Maps link, coordinates or a place name to suggest somewhere
+- Projects: one per trip or group, each with its own map, votes and chat. Invite friends with a link, and anyone in the project can rename it.
 - Sign in with Google. No other account needed.
 
 ## Getting started

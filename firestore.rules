@@ -17,48 +17,85 @@ service cloud.firestore {
     function isText(v, max) { return v is string && v.size() <= max; }
     function myName() { return request.auth.token.name; }
 
-    // Places on the map. Anyone allowed can add or delete a place; only
-    // the person who added a place can change it.
-    match /places/{placeId} {
-      allow read: if allowed();
-      allow create: if allowed()
-        && request.resource.data.addedBy == request.auth.uid
-        && request.resource.data.addedByName == myName()
-        && isText(request.resource.data.name, 80) && request.resource.data.name.size() > 0
-        && isText(request.resource.data.icon, 8)
-        && isText(request.resource.data.area, 60)
-        && isText(request.resource.data.blurb, 300)
-        && request.resource.data.activities is list
-        && request.resource.data.activities.size() <= 12
-        && request.resource.data.lat is number && request.resource.data.lng is number
-        && request.resource.data.lat > 1.1 && request.resource.data.lat < 1.5
-        && request.resource.data.lng > 103.5 && request.resource.data.lng < 104.2;
-      allow update: if allowed()
-        && resource.data.addedBy == request.auth.uid
-        && request.resource.data.addedBy == resource.data.addedBy;
-      allow delete: if allowed();
-    }
+    // Projects: one per trip or group. Each has its own places, votes and chat.
+    match /projects/{pid} {
+      function members() { return resource.data.memberIds; }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
 
-    // One ballot per person, stored under their own user id.
-    // Everyone can see the votes; you can only change your own.
-    match /votes/{uid} {
-      allow read: if allowed();
-      allow create, update: if allowed()
-        && request.auth.uid == uid
-        && request.resource.data.votes is map
-        && request.resource.data.name == myName();
-      allow delete: if allowed() && request.auth.uid == uid;
-    }
+      // Opening a project by its id is how invite links work. Ids are long and random,
+      // so only people who were sent the link can find a project.
+      allow get: if allowed();
+      // Listing only shows projects you're in.
+      allow list: if allowed() && request.auth.uid in resource.data.memberIds;
 
-    // Chat messages: post as yourself only; nobody can edit or delete them.
-    match /messages/{messageId} {
-      allow read: if allowed();
       allow create: if allowed()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name == myName()
-        && request.resource.data.createdAt == request.time
-        && ((request.resource.data.kind == 'text' && isText(request.resource.data.text, 1000))
-            || request.resource.data.kind == 'added');
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.members is map
+        && request.resource.data.members.keys().hasOnly([request.auth.uid])
+        && isText(request.resource.data.name, 60) && request.resource.data.name.size() > 0;
+
+      allow update: if allowed() && (
+        // Anyone in the project can rename it.
+        (request.auth.uid in members()
+          && changed().hasOnly(['name', 'renamedAt'])
+          && isText(request.resource.data.name, 60) && request.resource.data.name.size() > 0)
+        ||
+        // Anyone with the invite link can add themselves, and only themselves.
+        (changed().hasOnly(['memberIds', 'members'])
+          && request.resource.data.memberIds.toSet() == members().toSet().union([request.auth.uid].toSet())
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]))
+      );
+
+      function isMember() {
+        return allowed() && request.auth.uid in get(/databases/$(database)/documents/projects/$(pid)).data.memberIds;
+      }
+
+      // Places on the map. Anyone in the project can add or delete a place;
+      // only the person who added a place can change it.
+      match /places/{placeId} {
+        allow read: if isMember();
+        allow create: if isMember()
+          && request.resource.data.addedBy == request.auth.uid
+          && request.resource.data.addedByName == myName()
+          && isText(request.resource.data.name, 80) && request.resource.data.name.size() > 0
+          && isText(request.resource.data.icon, 8)
+          && isText(request.resource.data.area, 60)
+          && isText(request.resource.data.blurb, 300)
+          && request.resource.data.activities is list
+          && request.resource.data.activities.size() <= 12
+          && request.resource.data.lat is number && request.resource.data.lng is number
+          && request.resource.data.lat > 1.1 && request.resource.data.lat < 1.5
+          && request.resource.data.lng > 103.5 && request.resource.data.lng < 104.2;
+        allow update: if isMember()
+          && resource.data.addedBy == request.auth.uid
+          && request.resource.data.addedBy == resource.data.addedBy;
+        allow delete: if isMember();
+      }
+
+      // One ballot per person, stored under their own user id.
+      // Everyone in the project can see the votes; you can only change your own.
+      match /votes/{uid} {
+        allow read: if isMember();
+        allow create, update: if isMember()
+          && request.auth.uid == uid
+          && request.resource.data.votes is map
+          && request.resource.data.name == myName();
+        allow delete: if isMember() && request.auth.uid == uid;
+      }
+
+      // Chat messages: post as yourself only; nobody can edit or delete them.
+      // 'rename' messages are the notices posted when someone renames the project.
+      match /messages/{messageId} {
+        allow read: if isMember();
+        allow create: if isMember()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name == myName()
+          && request.resource.data.createdAt == request.time
+          && ((request.resource.data.kind == 'text' && isText(request.resource.data.text, 1000))
+              || request.resource.data.kind == 'added'
+              || (request.resource.data.kind == 'rename' && isText(request.resource.data.from, 60) && isText(request.resource.data.to, 60)));
+      }
     }
   }
 }
