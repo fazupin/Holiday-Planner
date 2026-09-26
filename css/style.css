@@ -89,6 +89,14 @@ path.land { fill: var(--land); stroke: var(--land-edge); stroke-width: 2.5px; st
 path.foreign { fill: var(--foreign); stroke: var(--land-edge); stroke-width: 1.5px; stroke-opacity: .5; }
 path.park { fill: var(--park); stroke: none; }
 path.res { fill: var(--sea-in); stroke: none; }
+.mapmode {
+  position: absolute; left: 12px; bottom: 12px; z-index: 1000;
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.mapmode button { border: 0; background: none; border-radius: 7px; padding: 6px 12px; font-weight: 700; font-size: 13px; color: var(--muted); }
+.mapmode button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
 /* MRT/LRT stations and bus stops */
 .transit { background: none; border: 0; }
 .transit .tsym {

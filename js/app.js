@@ -161,25 +161,51 @@
       } catch { /* a layer this style doesn't have; skip it */ }
     }
   }
+  let streetsState = 'none'; // none | loading | ready | failed
   function addStreetMap() {
-    if (typeof L.maplibreGL !== 'function' || !window.maplibregl) return; // library didn't load: keep hand-drawn map
+    if (streetsState !== 'none') return;
+    if (typeof L.maplibreGL !== 'function' || !window.maplibregl) { streetsState = 'failed'; return; } // library didn't load
+    streetsState = 'loading';
     const streets = L.maplibreGL({
       style: 'https://tiles.openfreemap.org/styles/liberty',
       pane: 'streets',
       interactive: false,
       attribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
     }).addTo(map);
-    let ready = false;
-    const giveUp = setTimeout(() => { if (!ready) map.removeLayer(streets); }, 12000);
+    const giveUp = setTimeout(() => {
+      if (streetsState !== 'loading') return;
+      streetsState = 'failed';
+      map.removeLayer(streets);
+      if (mapMode === 'detailed') toast("The detailed map couldn't load, so you're seeing the simple one.");
+    }, 12000);
     const gl = streets.getMaplibreMap();
     gl.once('load', () => {
-      ready = true; clearTimeout(giveUp);
+      if (streetsState !== 'loading') return;
+      streetsState = 'ready'; clearTimeout(giveUp);
       restyleStreets(gl);
-      map.removeLayer(handDrawn);
-      $('#mapwrap').classList.add('has-streets');
+      applyMapMode();
     });
   }
-  try { addStreetMap(); } catch { /* keep the hand-drawn map */ }
+
+  // Simple (hand-drawn) or Detailed (streets, stations, bus stops). Remembered on this device.
+  let mapMode = 'detailed';
+  try { if (localStorage.getItem('wanderly-map-mode') === 'simple') mapMode = 'simple'; } catch { /* storage blocked */ }
+  function applyMapMode() {
+    const detailed = mapMode === 'detailed';
+    if (detailed) { try { addStreetMap(); } catch { streetsState = 'failed'; } }
+    const showStreets = detailed && streetsState === 'ready';
+    map.getPane('streets').style.display = showStreets ? '' : 'none';
+    map.getPane('transit').style.display = detailed ? '' : 'none';
+    if (showStreets) map.removeLayer(handDrawn); else if (!map.hasLayer(handDrawn)) handDrawn.addTo(map);
+    for (const b of document.querySelectorAll('#mapMode button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mapMode));
+  }
+  function setMapMode(m) {
+    mapMode = m;
+    try { localStorage.setItem('wanderly-map-mode', m); } catch { /* storage blocked */ }
+    applyMapMode();
+    if (m === 'detailed') loadBusStops().catch(() => {});
+  }
+  for (const b of document.querySelectorAll('#mapMode button')) b.onclick = () => setMapMode(b.dataset.mode);
 
   // ---------- MRT stations and bus stops (OpenStreetMap data via Overpass, free, no key) ----------
   const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -234,6 +260,7 @@
   const BUS_ZOOM = 16;
   let busBounds = null, busTimer = 0, busSeq = 0;
   async function loadBusStops() {
+    if (mapMode !== 'detailed') return;
     if (map.getZoom() < BUS_ZOOM) { busLayer.clearLayers(); busBounds = null; return; }
     const view = map.getBounds();
     if (busBounds && busBounds.contains(view)) return;
@@ -251,6 +278,7 @@
     }
   }
   map.on('moveend', () => { clearTimeout(busTimer); busTimer = setTimeout(() => loadBusStops().catch(() => {}), 500); });
+  applyMapMode();
 
   const updateLabels = () => {
     const z = map.getZoom();
