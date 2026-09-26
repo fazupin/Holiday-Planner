@@ -154,7 +154,7 @@ body:not(.in-project) #paneProject {
 }
 body:not(.in-project) .lobbytitle {
   display: block; margin: 0 0 14px;
-  font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -.02em; color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -.02em; color: var(--accent);
 }
 body:not(.in-project) #paneProject > .card { background: none; border: 0; border-radius: 0; padding: 0; }
 body:not(.in-project) #newProjCard:not([hidden]) { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
