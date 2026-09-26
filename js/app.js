@@ -291,6 +291,15 @@
       }
       if (lines.length) cacheSet('wanderly-mrt-lines-v1', lines);
     }
+    // OpenStreetMap stores each line twice (one per direction, on parallel tracks).
+    // Keep one copy of each route: two routes are the same if they stop at the same stations.
+    const routeKey = line => line.stops.map(s => s[2] || `${s[0].toFixed(3)},${s[1].toFixed(3)}`).sort().join('|');
+    const unique = new Map();
+    for (const line of lines) {
+      const key = routeKey(line);
+      if (!unique.has(key) || unique.get(key).stops.length < line.stops.length) unique.set(key, line);
+    }
+    lines = [...unique.values()];
     // Draw LRT first so the MRT lines sit on top.
     lines.sort((a, b) => Number(b.lrt) - Number(a.lrt));
     // Faint dotted lines: a hint of each line's colour without overpowering the map.
