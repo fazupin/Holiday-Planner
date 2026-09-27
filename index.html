@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/style.css?v=40">
+  <link rel="stylesheet" href="css/style.css?v=41">
 </head>
 <body>
   <div class="app">
@@ -145,10 +145,10 @@
             <ol class="msgs" id="msgs" aria-live="polite"></ol>
             <div class="assist" id="assist" hidden></div>
             <form class="composer" id="composer">
-              <textarea id="cInput" rows="1" maxlength="1000" aria-label="Message" placeholder="Paste a Google Maps link, coordinates or a place name"></textarea>
+              <textarea id="cInput" rows="1" maxlength="1000" aria-label="Message" placeholder="Paste an address, place name or Google Maps link"></textarea>
               <button class="primary" type="submit" id="cSend">Send</button>
             </form>
-            <p class="chatfoot">For an exact pin: in Google Maps, press and hold on the place, then copy the numbers at the top (like 1.28473, 103.83251) and paste them here. Place search by OpenStreetMap.</p>
+            <p class="chatfoot">Send an address, a postal code, a place name or a Google Maps link to put a place to a vote. In Google Maps, tap Share, then Copy, and paste it here.</p>
           </section>
         </div>
       </aside>
@@ -281,7 +281,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script src="js/firebase-config.js?v=40"></script>
-  <script src="js/app.js?v=40"></script>
+  <script src="js/firebase-config.js?v=41"></script>
+  <script src="js/app.js?v=41"></script>
 </body>
 </html>

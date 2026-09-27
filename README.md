@@ -21,12 +21,12 @@ Once it's set up, send your friends the link: `https://wander-ly-50ea5.firebasea
 
 | What you paste in the chat | What happens |
 |---|---|
+| An address or postal code, like `1 Stadium Pl, Singapore 397628` | Looks it up on OneMap, then lists the building and every other place at that address |
+| What Google Maps copies when you tap Share (name, address and link) | Looks up the address and suggests the name from the message |
+| A full Google Maps link (from a computer browser) | Pin goes on the exact spot, with the name and address from the link |
+| A place name, like `Tiong Bahru Bakery` | Asks first, then searches and lets you pick the right match |
 | Coordinates, like `1.28473, 103.83251` | Pin goes on the exact spot |
-| A full Google Maps link (from a computer browser) | Pin goes on the exact spot |
-| A place name, like `Tiong Bahru Bakery` | Searches OpenStreetMap and lets you pick the right match |
-| A short link (`maps.app.goo.gl/...`) | Can't be opened, so the app asks for the name or coordinates instead |
-
-To get exact coordinates on a phone: in the Google Maps app, press and hold on the place, then copy the numbers shown at the top.
+| A short link on its own (`maps.app.goo.gl/...`) | Can't be opened, so the app asks for the whole Share message or the address |
 
 ## Project structure
 

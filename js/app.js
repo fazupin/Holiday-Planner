@@ -511,7 +511,7 @@
     if (!isFinite(lat) || !isFinite(lng)) return null;
     return {
       id: doc.id, name: str(x.name, 80) || 'Untitled place', icon: str(x.icon, 2) || '📍',
-      area: str(x.area, 60), mrt: str(x.mrt, 60), blurb: str(x.blurb, 300),
+      area: str(x.area, 60), mrt: str(x.mrt, 60), address: str(x.address, 160), blurb: str(x.blurb, 300),
       activities: Array.isArray(x.activities) ? x.activities.slice(0, 12).map(a => str(a, 160)).filter(Boolean) : [],
       lat, lng, addedBy: typeof x.addedBy === 'string' ? x.addedBy : null, addedByName: str(x.addedByName, 60),
       source: str(x.source, 12),
@@ -709,7 +709,7 @@
   const SOURCE_NOTES = {
     link: 'This pin uses the exact location from the Google Maps link.',
     coords: 'This pin uses the exact coordinates you pasted.',
-    search: "This pin comes from an OpenStreetMap search. Check it's the right place and drag the pin if needed.",
+    search: "This pin comes from an address search. Check it's the right spot and drag the pin if needed.",
   };
   function renderForm() {
     const pre = prefill || {};
@@ -726,6 +726,7 @@
       SOURCE_NOTES[pre.source] ? el('p', { class: 'note', text: SOURCE_NOTES[pre.source] }) : null,
       el('label', { for: 'fName', text: 'Name' }), el('input', { id: 'fName', maxlength: '80', placeholder: 'e.g. Clarke Quay', required: '' }),
       el('label', { text: 'Icon' }), icons,
+      el('label', { for: 'fAddr', text: 'Address (optional)' }), el('input', { id: 'fAddr', maxlength: '160', placeholder: 'e.g. 1 Stadium Place, Singapore 397628' }),
       el('label', { for: 'fArea', text: 'Area (optional)' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. Clarke Quay' }),
       el('label', { for: 'fMrt', text: 'Nearest MRT' }), el('input', { id: 'fMrt', maxlength: '60', placeholder: 'e.g. Clarke Quay MRT', list: 'fMrtList' }),
       el('datalist', { id: 'fMrtList' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
@@ -739,6 +740,7 @@
     box.append(form);
     $('#fName').value = pre.name || '';
     $('#fArea').value = pre.area || '';
+    $('#fAddr').value = pre.address || '';
     mrtAuto = ''; $('#fMrt').value = ''; // filled in from the pin below
     $('#fBlurb').value = pre.blurb || '';
     $('#fActs').value = (pre.activities || []).join('\n');
@@ -749,7 +751,7 @@
       if (!name) { err.textContent = 'Give the place a name.'; err.hidden = false; $('#fName').focus(); return; }
       const doc = {
         name: str(name, 80), icon: formIcon,
-        area: str($('#fArea').value.trim(), 60), mrt: str($('#fMrt').value.trim(), 60),
+        area: str($('#fArea').value.trim(), 60), mrt: str($('#fMrt').value.trim(), 60), address: str($('#fAddr').value.trim(), 160),
         blurb: str($('#fBlurb').value.trim(), 300),
         activities: $('#fActs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12).map(s => str(s, 160)),
         lat: +draft.lat.toFixed(6), lng: +draft.lng.toFixed(6),
@@ -865,6 +867,7 @@
       el('div', { class: 'phead' },
         el('div', { class: 'bigicon', 'aria-hidden': 'true', text: p.icon }),
         el('div', { class: 'pheadtext' }, nameEl, meta ? el('p', { class: 'meta', text: meta }) : null,
+          p.address ? el('p', { class: 'paddr', text: p.address }) : null,
           el('div', { class: 'coords' }, coordText(p.lat, p.lng), gmaps))),
       p.blurb ? el('p', { class: 'blurb', text: p.blurb }) : null,
       p.activities.length ? el('p', { class: 'eyebrow', text: 'Things to do' }) : null,
@@ -1222,46 +1225,109 @@
     });
   }
 
-  // Reading what people paste.
+  // Reading what people paste: an address, a postal code, a place name, coordinates, or a Google Maps
+  // link (or the whole message Google Maps writes when you tap Share: name, address and link).
+  const decodePart = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch { return s.replace(/\+/g, ' '); } };
   function parseInput(text) {
     const s = text.trim();
-    const hasUrl = /https?:\/\/\S+/i.test(s);
+    const urls = s.match(/https?:\/\/\S+/gi) || [];
     const coordRe = /(-?\d{1,2}\.\d{3,})\s*[,\s]\s*(-?\d{2,3}\.\d{3,})/;
     let lat = null, lng = null, source = 'coords', m;
     if ((m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))) { lat = +m[1]; lng = +m[2]; source = 'link'; }            // the place itself
     else if ((m = s.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))) { lat = +m[1]; lng = +m[2]; source = 'link'; }
     else if ((m = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))) { lat = +m[1]; lng = +m[2]; source = 'link'; }            // map centre
     else if ((m = s.match(coordRe))) { lat = +m[1]; lng = +m[2]; }
-    let name = '';
-    const pm = s.match(/\/maps\/place\/([^/@?]+)/);
-    if (pm) { try { name = decodeURIComponent(pm[1].replace(/\+/g, ' ')); } catch { name = pm[1].replace(/\+/g, ' '); } }
-    const rest = s.replace(/https?:\/\/\S+/g, ' ').replace(coordRe, ' ').replace(/\s+/g, ' ').trim();
-    if (lat != null && isFinite(lat) && isFinite(lng)) {
-      if (!name && rest && rest.length <= 80) name = rest.split(',')[0].trim();
-      return { kind: inSingapore(lat, lng) ? 'exact' : 'outside', lat, lng, name: str(name, 80), source };
+
+    // Name and address written inside a long Google Maps link: /maps/place/Name,+Address/…
+    // or ?q=Name,+Address, or /maps/search/Name.
+    let name = '', address = '';
+    const pm = s.match(/\/maps\/place\/([^/@?]+)/) || s.match(/\/maps\/search\/([^/@?]+)/)
+      || s.match(/google\.[a-z.]+\/maps\S*?[?&](?:q|query)=([^&\s]+)/i);
+    if (pm) {
+      const full = decodePart(pm[1]).trim();
+      if (!coordRe.test(full)) {
+        const bits = full.split(',').map(x => x.trim()).filter(Boolean);
+        if (/^\d/.test(bits[0] || '')) address = full;       // it's just an address
+        else { name = bits[0] || ''; address = bits.slice(1).join(', '); }
+      }
     }
-    if (/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|share\.google)/i.test(s)) return { kind: 'short', rest };
-    if (hasUrl) return { kind: 'link', rest };
-    return { kind: 'text', rest: s };
+    // Words around the link: Google's Share message puts the name first, then the address.
+    const rest = s.replace(/https?:\/\/\S+/g, ' ').replace(coordRe, ' ').replace(/[ \t]+/g, ' ').trim();
+    const lines = rest.split(/\n+/).map(x => x.trim().replace(/^[,\s]+|[,\s]+$/g, '')).filter(Boolean);
+
+    if (lat != null && isFinite(lat) && isFinite(lng)) {
+      if (!name && lines[0] && lines[0].length <= 80) name = lines[0].split(',')[0].trim();
+      if (!address && lines.length > 1) address = lines.slice(1).join(', ');
+      return { kind: inSingapore(lat, lng) ? 'exact' : 'outside', lat, lng, name: str(name, 80), address: str(address, 160), source };
+    }
+    const fromLink = urls.length > 0;
+    const query = [name, address].filter(Boolean).join(', ') || lines.join(', ');
+    // The name to suggest: from the link, or the first line when the message has a name above an address.
+    const hint = name || (lines.length > 1 && !/^\d/.test(lines[0]) ? lines[0] : '')
+      || (fromLink && lines[0] && !/^\d/.test(lines[0]) ? lines[0].split(',')[0] : '');
+    if (query) return { kind: fromLink ? 'linktext' : 'text', query, hint: str(hint, 80) };
+    if (urls.some(u => /(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|share\.google)/i.test(u))) return { kind: 'short' };
+    if (fromLink) return { kind: 'link' };
+    return { kind: 'text', query: s, hint: '' };
   }
 
-  // OpenStreetMap place search (free, no key). Only called when someone taps a button or pastes coordinates.
+  // ---------- place and address search ----------
+  // Addresses and postal codes: OneMap (Singapore Land Authority, free, no key) knows every building.
+  // Place names: OpenStreetMap's Nominatim. Only called when someone sends a place, a link or an address.
   const ICON_BY_TYPE = {
     cafe: '☕', restaurant: '🍜', fast_food: '🍜', food_court: '🍜', bar: '🍸', pub: '🍸', nightclub: '🍸',
     museum: '🏛️', gallery: '🏛️', attraction: '🎡', theme_park: '🎢', zoo: '🦒', aquarium: '🦒',
     park: '🌳', garden: '🌳', nature_reserve: '🌳', beach: '🏖️', hotel: '🏨', place_of_worship: '🛕',
     mall: '🛍️', marketplace: '🛍️', department_store: '🛍️', viewpoint: '🌅',
   };
+  const titleCase = s => String(s || '').toLowerCase().replace(/(^|[\s\-/(])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  const sgAddress = (line1, building, postal) => [line1, building, postal ? `Singapore ${postal}` : ''].filter(Boolean).join(', ');
+  const postalOf = q => (String(q).match(/(?:^|\D)(\d{6})(?!\d)/) || [])[1] || '';
+  // "1000 ECP, #01-05 Marine Cove, Singapore 449876" → "1000 East Coast Parkway, Marine Cove"
+  const SG_ABBR = [[/\bECP\b/gi, 'East Coast Parkway'], [/\bAve\b\.?/gi, 'Avenue'], [/\bRd\b\.?/gi, 'Road'], [/\bSt\b\.?/gi, 'Street'],
+    [/\bDr\b\.?/gi, 'Drive'], [/\bPl\b\.?/gi, 'Place'], [/\bCres\b\.?/gi, 'Crescent'], [/\bBlvd\b\.?/gi, 'Boulevard'], [/\bCtr\b\.?/gi, 'Centre'],
+    [/\bPk\b\.?/gi, 'Park'], [/\bUpp\b\.?/gi, 'Upper'], [/\bNth\b\.?/gi, 'North'], [/\bSth\b\.?/gi, 'South'], [/\bJln\b\.?/gi, 'Jalan'],
+    [/\bLor\b\.?/gi, 'Lorong'], [/\bBt\b\.?/gi, 'Bukit'], [/\bTg\b\.?/gi, 'Tanjong'], [/\bKg\b\.?/gi, 'Kampong'], [/\bPkwy\b\.?/gi, 'Parkway'],
+    [/\bBlk\b\.?\s*/gi, '']];
+  function cleanAddress(q) {
+    let s = String(q)
+      .replace(/#\s*[\dA-Z]{1,3}\s*-\s*[\dA-Z]{1,5}/gi, ' ')     // unit numbers like #01-05
+      .replace(/\b(?:Singapore|S'?pore|SG)\s*\d{6}\b/gi, ' ')     // "Singapore 449876"
+      .replace(/\b\d{6}\b/g, ' ')
+      .replace(/\bSingapore\b/gi, ' ');
+    for (const [re, full] of SG_ABBR) s = s.replace(re, full);
+    return s.split(',').map(x => x.replace(/\s+/g, ' ').trim()).filter(x => x.length > 1).join(', ');
+  }
+
+  async function oneMapSearch(q) {
+    const url = 'https://www.onemap.gov.sg/api/common/elastic/search?' + new URLSearchParams({ searchVal: q, returnGeom: 'Y', getAddrDetails: 'Y', pageNum: '1' });
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('onemap ' + r.status);
+    const j = await r.json();
+    const nil = v => (!v || v === 'NIL' ? '' : String(v));
+    return (j.results || []).map(x => {
+      const lat = Number(x.LATITUDE), lng = Number(x.LONGITUDE);
+      if (!isFinite(lat) || !isFinite(lng) || !inSingapore(lat, lng)) return null;
+      const building = titleCase(nil(x.BUILDING));
+      const line1 = titleCase([nil(x.BLK_NO), nil(x.ROAD_NAME)].filter(Boolean).join(' '));
+      return {
+        name: str(building || titleCase(nil(x.SEARCHVAL)) || line1, 80), lat, lng, area: '', icon: '📍',
+        address: str(sgAddress(line1, building, nil(x.POSTAL)), 160),
+      };
+    }).filter(Boolean);
+  }
   function fromOsm(x) {
     const lat = Number(x.lat), lng = Number(x.lon);
     if (!isFinite(lat) || !isFinite(lng) || !inSingapore(lat, lng)) return null;
     const a = x.address || {};
+    const line1 = [a.house_number, a.road].filter(Boolean).join(' ');
+    const name = str(x.name || String(x.display_name || '').split(',')[0], 80);
+    const shortName = String(x.display_name || '').split(',').map(v => v.trim()).filter(v => v && v !== 'Singapore').slice(0, 4).join(', ');
     return {
-      name: str(x.name || String(x.display_name || '').split(',')[0], 80),
-      lat, lng,
-      area: str(a.suburb || a.neighbourhood || a.quarter || a.city_district || a.road || '', 60),
+      name, lat, lng,
+      area: str(a.suburb || a.neighbourhood || a.quarter || a.city_district || '', 60),
       icon: ICON_BY_TYPE[x.type] || '📍',
-      address: str(x.display_name, 160),
+      address: str(line1 ? sgAddress(line1, a.building && a.building !== name ? a.building : '', a.postcode) : shortName, 160),
     };
   }
   async function osm(path, params) {
@@ -1271,9 +1337,45 @@
     return r.json();
   }
   const osmSearch = async q => (await osm('search', { q, countrycodes: 'sg', limit: '5' })).map(fromOsm).filter(Boolean);
-  // An address (Singapore postal code, or "1 Stadium Pl") can hold a whole mall. Nominatim only
-  // returns the best match, so for addresses we also list every named place around that spot.
-  const looksLikeAddress = q => /\b\d{6}\b/.test(q) || /^\s*(blk\s*)?\d+[a-z]?\s+[a-z]/i.test(q);
+  const osmReverse = async (lat, lng) => { const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
+
+  // Addresses: the postal code first, then the whole address, then each part of it (e.g. the building
+  // name), on OneMap, then OpenStreetMap. Place names: OpenStreetMap first, then OneMap.
+  // Stops at the first search that finds something.
+  async function findPlaces(q) {
+    const postal = postalOf(q), cleaned = cleanAddress(q);
+    const parts = cleaned.split(', ').filter(x => x.length > 2);
+    const viaOneMap = async () => {
+      for (const t of [...new Set([postal, cleaned, ...parts].filter(Boolean))].slice(0, 5)) {
+        let found = [];
+        try { found = await oneMapSearch(t); } catch { return []; } // OneMap is down: use OpenStreetMap
+        if (found.length) return found;
+      }
+      return [];
+    };
+    const viaOsm = async () => {
+      for (const t of [...new Set([q.trim(), cleaned, ...parts].filter(Boolean))].slice(0, 3)) {
+        const found = await osmSearch(t);
+        if (found.length) return found;
+      }
+      return [];
+    };
+    const order = looksLikeAddress(q) ? [viaOneMap, viaOsm] : [viaOsm, viaOneMap];
+    for (const run of order) {
+      let found = [];
+      try { found = await run(); } catch { /* try the other one */ }
+      if (found.length) return { results: dedupe(found).slice(0, 8) };
+    }
+    return { results: [] };
+  }
+  function dedupe(list) {
+    const seen = new Set();
+    return list.filter(r => { const k = `${r.name.toLowerCase()}|${r.lat.toFixed(4)}|${r.lng.toFixed(4)}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  // An address (Singapore postal code, or "1 Stadium Pl") can hold a whole mall, so for addresses
+  // we also list every named place around that spot, from OpenStreetMap.
+  const looksLikeAddress = q => !!postalOf(q) || /^\s*(blk\s*)?\d+[a-z]?\s+[a-z]/i.test(q);
   const SKIP_AMENITY = new Set(['parking', 'parking_entrance', 'parking_space', 'motorcycle_parking', 'bicycle_parking', 'toilets', 'atm',
     'bench', 'waste_basket', 'waste_disposal', 'recycling', 'vending_machine', 'telephone', 'post_box', 'shelter', 'taxi',
     'charging_station', 'drinking_water', 'loading_dock', 'smoking_area']);
@@ -1284,7 +1386,7 @@
     const v = tags[k] === 'yes' ? k : tags[k];
     return v.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
   };
-  async function placesAt(lat, lng) {
+  async function placesAt(lat, lng, baseAddress) {
     const els = await overpass(`[out:json][timeout:15];
       nwr(around:70,${lat},${lng})["name"][~"^(shop|amenity|leisure|tourism|sport|office|craft|building)$"~"."];
       out center tags 60;`);
@@ -1298,64 +1400,74 @@
       seen.add(key);
       const type = t.shop || t.amenity || t.leisure || t.tourism || '';
       const big = t.shop === 'mall' || (t.building && !t.shop && !t.amenity && !t.leisure) ? 0 : 1; // the building or mall first
-      const addr = [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ');
-      list.push({ name, lat: +la, lng: +ln, icon: ICON_BY_TYPE[type] || '📍', big,
-        address: [kindOf(t), t['addr:unit'] || t['addr:floor'] ? `#${t['addr:unit'] || t['addr:floor']}` : '', addr].filter(Boolean).join(' · ') });
+      const unit = t['addr:unit'] ? `#${t['addr:unit']}` : '';
+      const line1 = [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ');
+      const address = line1 ? sgAddress([line1, unit].filter(Boolean).join(' '), '', t['addr:postcode']) : [unit, baseAddress].filter(Boolean).join(', ');
+      list.push({ name, lat: +la, lng: +ln, icon: ICON_BY_TYPE[type] || '📍', big, address: str(address, 160), sub: [kindOf(t), unit].filter(Boolean).join(' · ') });
     }
     return list.sort((a, b) => a.big - b.big || a.name.localeCompare(b.name));
   }
-  const osmReverse = async (lat, lng) =>{ const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
 
   // The helper box above the message box. Only the person who sent the message sees it.
-  const TIP = 'For an exact pin: in the Google Maps app, press and hold on the place, copy the numbers at the top (like 1.28473, 103.83251) and paste them here.';
   function assist(...kids) { const a = $('#assist'); a.replaceChildren(...kids); a.hidden = !kids.length; }
   function closeBtn(label) { const b = el('button', { class: 'ghost', type: 'button', text: label || 'OK' }); b.onclick = () => assist(); return b; }
 
-  function offerSearch(q, intro) {
-    const go = el('button', { class: 'primary', type: 'button', text: 'Search the map' });
-    go.onclick = () => runSearch(q);
+  function offerSearch(q, intro, hint) {
+    const go = el('button', { class: 'primary', type: 'button', text: 'Find it on the map' });
+    go.onclick = () => runSearch(q, hint);
     assist(el('p', { text: intro }), el('div', { class: 'row2' }, go, closeBtn('No thanks')));
   }
   let searchSeq = 0;
-  async function runSearch(q) {
+  async function runSearch(q, hint) {
     const seq = ++searchSeq;
-    assist(el('p', {}, el('span', { class: 'spin', 'aria-hidden': 'true' }), ` Searching for "${str(q, 60)}"…`));
+    assist(el('p', {}, el('span', { class: 'spin', 'aria-hidden': 'true' }), ` Looking up "${str(q, 60)}"…`));
     try {
-      const results = await osmSearch(q);
+      const { results } = await findPlaces(q);
       if (seq !== searchSeq) return;
       if (!results.length) {
-        assist(el('p', { text: 'No matches in Singapore. Try the full name, or add the street or area.' }), el('p', { class: 'small', text: TIP }), el('div', { class: 'row2' }, closeBtn()));
+        assist(el('p', { text: "Couldn't find that in Singapore. Try the postal code, the building's name, or the block number and street." }),
+          el('div', { class: 'row2' }, closeBtn()));
         return;
+      }
+      // A name from a Google Maps link that the search didn't return (e.g. a shop inside a mall): offer it first.
+      if (hint && !results.some(r => r.name.toLowerCase() === hint.toLowerCase())) {
+        results.unshift({ ...results[0], name: hint, icon: '📍', sub: results[0].address, fromHint: true });
       }
       const resultList = items => {
         const list = el('ul', { class: 'results' });
         for (const r of items) {
           const b = el('button', { type: 'button' }, el('span', { 'aria-hidden': 'true', text: r.icon }),
-            el('span', {}, el('b', { text: r.name }), el('small', { text: r.address })));
-          b.onclick = () => { assist(); startAdd({ ...r, area: r.area || results[0].area, source: 'search' }); };
+            el('span', {}, el('b', { text: r.name }), el('small', { text: r.sub || r.address })));
+          b.onclick = () => {
+            assist();
+            startAdd({ name: r.name, lat: r.lat, lng: r.lng, icon: r.icon, area: r.area || results[0].area || '', address: r.address || '', source: 'search' });
+          };
           list.append(el('li', {}, b));
         }
         return list;
       };
-      const more = looksLikeAddress(q) ? el('div', { class: 'atplace' },
+      const more = looksLikeAddress(q) || hint ? el('div', { class: 'atplace' },
         el('p', { class: 'small' }, el('span', { class: 'spin', 'aria-hidden': 'true' }), ' Looking for other places at this address…')) : null;
-      assist(el('p', { text: 'Which one is it?' }), resultList(results), more, el('div', { class: 'row2' }, closeBtn('None of these')));
+      assist(el('p', { text: results.length > 1 ? 'Which one is it?' : 'Is this it?' }), resultList(results), more, el('div', { class: 'row2' }, closeBtn('None of these')));
       if (more) {
         const top = results[0];
-        placesAt(top.lat, top.lng).then(found => {
+        placesAt(top.lat, top.lng, top.address).then(found => {
           if (seq !== searchSeq || !more.isConnected) return;
           const shown = new Set(results.map(r => r.name.toLowerCase()));
           const extra = found.filter(r => !shown.has(r.name.toLowerCase())).slice(0, 30);
           more.replaceChildren(...(extra.length
             ? [el('p', { class: 'eyebrow', text: `Also at this address (${extra.length})` }), resultList(extra)]
-            : [el('p', { class: 'small', text: 'No other places found at this address on OpenStreetMap.' })]));
+            : [el('p', { class: 'small', text: 'No other places found at this address.' })]));
         }).catch(() => { if (more.isConnected) more.replaceChildren(el('p', { class: 'small', text: "Couldn't look up other places at this address." })); });
       }
     } catch {
-      assist(el('p', { text: "Search isn't working right now. Try again in a minute, or paste the coordinates." }), el('div', { class: 'row2' }, closeBtn()));
+      assist(el('p', { text: "Search isn't working right now. Try again in a minute." }), el('div', { class: 'row2' }, closeBtn()));
     }
   }
 
+  // The message box grows with what's typed, up to a few lines.
+  const growInput = () => { const i = $('#cInput'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight + 2, 132) + 'px'; };
+  $('#cInput').addEventListener('input', growInput);
   $('#cInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && settings.enterToSend) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
@@ -1367,31 +1479,36 @@
     send.disabled = true;
     try { await postMessage({ kind: 'text', text: str(text, 1000) }); }
     catch { send.disabled = false; toast("Your message didn't send. Try again."); return; }
-    input.value = ''; send.disabled = false;
+    input.value = ''; growInput(); send.disabled = false;
 
     const r = parseInput(text);
     if (r.kind === 'exact') {
       assist();
-      startAdd({ lat: r.lat, lng: r.lng, name: r.name, source: r.source });
-      if (!r.name) {
-        // Look up what's at that spot to suggest a name.
+      startAdd({ lat: r.lat, lng: r.lng, name: r.name, address: r.address, source: r.source });
+      if (!r.name || !r.address) {
+        // Look up what's at that spot to fill in the name and address.
         osmReverse(r.lat, r.lng).then(x => {
           if (!x || !adding) return;
-          const nm = $('#fName'), ar = $('#fArea');
+          const nm = $('#fName'), ar = $('#fArea'), ad = $('#fAddr');
           if (nm && !nm.value.trim()) nm.value = x.name;
           if (ar && !ar.value.trim()) ar.value = x.area;
+          if (ad && !ad.value.trim()) ad.value = x.address;
           if (formIcon === '📍' && x.icon !== '📍') setIcon(x.icon);
         }).catch(() => {});
       }
     } else if (r.kind === 'outside') {
-      assist(el('p', { text: "Those coordinates are outside Singapore, so there's no spot on this map for them." }), el('div', { class: 'row2' }, closeBtn()));
+      assist(el('p', { text: "That spot is outside Singapore, so it can't go on this map." }), el('div', { class: 'row2' }, closeBtn()));
+    } else if (r.kind === 'linktext') {
+      runSearch(r.query, r.hint); // a Google Maps link with a name or address: look it up straight away
     } else if (r.kind === 'short') {
-      if (r.rest) offerSearch(r.rest, "Short Google Maps links can't be opened here, but your message has a name in it. Search the map for it?");
-      else assist(el('p', { text: "Short Google Maps links can't be opened here. Paste the place's name or its coordinates instead." }), el('p', { class: 'small', text: TIP }), el('div', { class: 'row2' }, closeBtn()));
+      assist(el('p', { text: "This short link doesn't say which place it is. In Google Maps, tap Share, then Copy, and paste the whole message: it includes the place's name and address. Or paste the address." }),
+        el('div', { class: 'row2' }, closeBtn()));
     } else if (r.kind === 'link') {
-      if (r.rest) offerSearch(r.rest, "This link can't be opened here. Search the map for the rest of your message?");
+      // any other link: nothing to look up
+    } else if (looksLikeAddress(r.query)) {
+      runSearch(r.query, r.hint); // an address or postal code: look it up straight away
     } else {
-      offerSearch(text, `Is "${str(text, 50)}" a place you want to suggest?`);
+      offerSearch(r.query, `Is "${str(r.query, 50)}" a place you want to suggest?`, r.hint);
     }
   });
 

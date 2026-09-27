@@ -5,6 +5,10 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 ## 27 September 2026
 
 ### Place search
+- **Search by address.** Addresses and postal codes are looked up on OneMap (Singapore's official map), so "1000 ECP, #01-05 Marine Cove, Singapore 449876" works. Unit numbers and short forms like "ECP" or "Ave" are understood. Place names still use OpenStreetMap. Coordinates are no longer suggested.
+- **Google Maps links.** Pasting what Google Maps copies when you tap Share (name, address and link) looks up the place and suggests its name. Long links give the exact spot plus the name and address.
+- **Places have an address**, shown under the name and filled in from the search or link.
+- **Chat box** matches the rest of the app: same font, grows as you type, accent outline, no clunky scrollbar.
 - **Nearest MRT comes from the pin.** New places get a separate "Nearest MRT" field, filled with the closest station and its distance, e.g. "Stadium MRT (~350 m)". It follows the pin when dragged. Before, the neighbourhood name (e.g. "Kallang") appeared where people expected a station.
   - Older places show their nearest MRT the same way.
 - **Everything at an address.** Searching an address or postal code also lists the other named places there, such as the mall itself and the shops inside it.
