@@ -486,7 +486,12 @@ button.itinplace { font-size: 15px; }
 .votectl .small { margin: 0; }
 .row .ar.deadlinetag { color: var(--accent); font-weight: 700; }
 .limitsel { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--paper); color: var(--ink); font-size: 14px; }
-#projCard .limitsel + .small { margin: 6px 0 0; }
+.form .limitnote { margin: 6px 0 0; }
+.limitrow { align-items: center; }
+.nolimit { color: var(--muted); }
+.limitform { margin-top: 2px; }
+.limitform .limitsel { flex: 1 1 180px; width: auto; min-width: 0; }
+.votectl .limitsel { margin: 2px 0 4px; }
 
 .fieldlabel { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 4px; }
 .fixeddate { margin: 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; font-size: 14px; }

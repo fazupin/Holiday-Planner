@@ -5,6 +5,10 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 ## 27 September 2026
 
 ### Voting controls
+- **Time limits are set per place**, instead of one limit for the whole project.
+  - Choose one when adding a place ("Vote within 2 hours"), or leave it with no limit.
+  - Anyone can set, change or clear a place's limit while its voting is open. It counts from that moment.
+  - Reopening voting asks how long the new round should last.
 - **Rename a place.** Anyone in the project can rename it, and a matching itinerary stop is renamed too.
 - **End voting now.** Voting on a place can be ended early.
   - If Yes is ahead of No, the place goes into the itinerary automatically.
