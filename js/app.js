@@ -690,8 +690,22 @@
     // Keep "Nearest MRT" in step with the pin, unless someone typed their own.
     const m = $('#fMrt');
     if (m && draft && m.value === mrtAuto) { mrtAuto = nearestMrtText(draft.lat, draft.lng); m.value = mrtAuto; }
+    // Same for "Area", which needs a lookup, so wait until the pin stops moving.
+    clearTimeout(areaTimer);
+    if (draft) areaTimer = setTimeout(refreshArea, 700);
   }
-  let mrtAuto = ''; // the last "Nearest MRT" the form filled in by itself
+  let mrtAuto = '';  // the last "Nearest MRT" the form filled in by itself
+  let areaAuto = ''; // the last "Area" the form filled in by itself
+  let areaTimer = null, areaSeq = 0;
+  async function refreshArea() {
+    const a = $('#fArea');
+    if (!a || !draft || a.value !== areaAuto) return;
+    const seq = ++areaSeq, name = ($('#fName') || {}).value || '';
+    const found = await areaAt(draft.lat, draft.lng, name);
+    const now2 = $('#fArea');
+    if (seq !== areaSeq || !now2 || now2.value !== areaAuto || !found) return;
+    areaAuto = found; now2.value = found;
+  }
   function setIcon(ic) {
     formIcon = ic;
     const icons = $('#fIcons');
@@ -727,10 +741,10 @@
       el('label', { for: 'fName', text: 'Name' }), el('input', { id: 'fName', maxlength: '80', placeholder: 'e.g. Clarke Quay', required: '' }),
       el('label', { text: 'Icon' }), icons,
       el('label', { for: 'fAddr', text: 'Address (optional)' }), el('input', { id: 'fAddr', maxlength: '160', placeholder: 'e.g. 1 Stadium Place, Singapore 397628' }),
-      el('label', { for: 'fArea', text: 'Area (optional)' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. Clarke Quay' }),
+      el('label', { for: 'fArea', text: 'Area' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. East Coast Park' }),
       el('label', { for: 'fMrt', text: 'Nearest MRT' }), el('input', { id: 'fMrt', maxlength: '60', placeholder: 'e.g. Clarke Quay MRT', list: 'fMrtList' }),
       el('datalist', { id: 'fMrtList' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
-      el('p', { class: 'small limitnote', text: 'Filled in from the pin (straight-line distance). Change it if there\'s a better station.' }),
+      el('p', { class: 'small limitnote', text: 'Area and nearest MRT are filled in from the pin (MRT distance is a straight line). Change them if you know better.' }),
       el('label', { for: 'fBlurb', text: 'Why go? (optional)' }), el('input', { id: 'fBlurb', maxlength: '300', placeholder: 'One line to sell it to the group' }),
       el('label', { for: 'fActs', text: 'Things to do, one per line' }), el('textarea', { id: 'fActs', placeholder: 'River cruise\nDinner by the water\nBar hopping' }),
       el('label', { for: 'fLimit', text: 'Voting time limit' }), limitSelect('fLimit', 0),
@@ -739,7 +753,7 @@
       el('div', { class: 'factions' }, save, el('button', { class: 'ghost', type: 'button', id: 'fCancel', text: 'Cancel' })));
     box.append(form);
     $('#fName').value = pre.name || '';
-    $('#fArea').value = pre.area || '';
+    areaAuto = pre.area || ''; $('#fArea').value = areaAuto; // may be swapped for a better one from the pin
     $('#fAddr').value = pre.address || '';
     mrtAuto = ''; $('#fMrt').value = ''; // filled in from the pin below
     $('#fBlurb').value = pre.blurb || '';
@@ -1339,6 +1353,36 @@
   const osmSearch = async q => (await osm('search', { q, countrycodes: 'sg', limit: '5' })).map(fromOsm).filter(Boolean);
   const osmReverse = async (lat, lng) => { const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
 
+  // The area a spot is in, for a place's "Area": first a park, beach, island or attraction the pin
+  // is inside (e.g. East Coast Park, Sentosa), then its neighbourhood, then the town (e.g. Bedok).
+  // From OpenStreetMap's list of areas containing the spot; falls back to Nominatim's suburb.
+  const LANDMARK = {
+    leisure: ['park', 'nature_reserve', 'garden', 'beach_resort', 'marina', 'sports_centre', 'stadium', 'golf_course', 'water_park'],
+    tourism: ['attraction', 'theme_park', 'zoo', 'aquarium', 'resort'],
+    natural: ['beach', 'wood'], place: ['island', 'islet'], amenity: ['university', 'college'],
+    landuse: ['recreation_ground'],
+  };
+  const NEIGHBOURHOOD = ['neighbourhood', 'quarter', 'suburb', 'village', 'town'];
+  const TOO_BIG = /^Singapore$|Region$|District$|Council$|Constituency$|GRC$|SMC$/i;
+  function areaTier(t) {
+    if (Object.entries(LANDMARK).some(([k, vals]) => vals.includes(t[k]))) return 0;
+    if (NEIGHBOURHOOD.includes(t.place)) return 1;
+    if (t.boundary === 'administrative' && Number(t.admin_level) >= 5) return 2;
+    return -1;
+  }
+  async function areaAt(lat, lng, placeName) {
+    try {
+      const els = await overpass(`[out:json][timeout:10];is_in(${lat},${lng})->.a;area.a[name];out tags;`);
+      const skip = String(placeName || '').trim().toLowerCase();
+      const best = els.map(e => e.tags || {})
+        .map(t => ({ t, name: str(t['name:en'] || t.name, 60), tier: areaTier(t) }))
+        .filter(a => a.tier >= 0 && a.name && !TOO_BIG.test(a.name) && a.name.toLowerCase() !== skip && !a.t.building && !a.t.shop)
+        .sort((a, b) => a.tier - b.tier || Number(b.t.admin_level || 0) - Number(a.t.admin_level || 0))[0];
+      if (best) return best.name;
+    } catch { /* fall back to Nominatim */ }
+    try { const x = await osmReverse(lat, lng); return x ? x.area : ''; } catch { return ''; }
+  }
+
   // Addresses: the postal code first, then the whole address, then each part of it (e.g. the building
   // name), on OneMap, then OpenStreetMap. Place names: OpenStreetMap first, then OneMap.
   // Stops at the first search that finds something.
@@ -1489,9 +1533,8 @@
         // Look up what's at that spot to fill in the name and address.
         osmReverse(r.lat, r.lng).then(x => {
           if (!x || !adding) return;
-          const nm = $('#fName'), ar = $('#fArea'), ad = $('#fAddr');
+          const nm = $('#fName'), ad = $('#fAddr'); // the Area fills in from the pin by itself
           if (nm && !nm.value.trim()) nm.value = x.name;
-          if (ar && !ar.value.trim()) ar.value = x.area;
           if (ad && !ad.value.trim()) ad.value = x.address;
           if (formIcon === '📍' && x.icon !== '📍') setIcon(x.icon);
         }).catch(() => {});

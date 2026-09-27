@@ -13,6 +13,7 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
   - All of it can still be changed.
 
 ### Place search
+- **Area fills in from the pin.** It uses the park, beach, island or attraction the pin is inside (e.g. East Coast Park, Sentosa), otherwise the neighbourhood or town. It follows the pin when dragged, unless someone typed their own.
 - **Search by address.** Addresses and postal codes are looked up on OneMap (Singapore's official map), so "1000 ECP, #01-05 Marine Cove, Singapore 449876" works. Unit numbers and short forms like "ECP" or "Ave" are understood. Place names still use OpenStreetMap. Coordinates are no longer suggested.
 - **Google Maps links.** Pasting what Google Maps copies when you tap Share (name, address and link) looks up the place and suggests its name. Long links give the exact spot plus the name and address.
 - **Places have an address**, shown under the name and filled in from the search or link.
