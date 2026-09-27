@@ -4,6 +4,14 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Automatic voting results
+- **Voting ends by itself once everyone has voted.** If Yes is ahead, the place goes into the itinerary; otherwise it's greyed out. Earlier rounds show "ended when everyone had voted".
+- **Stops added automatically come with a time and meeting point.**
+  - The time is the nearest whole hour when voting ended (12:34 pm becomes 1 pm).
+  - The day is today if it's a trip day, otherwise the first day.
+  - Everyone meets at the nearest MRT station 15 minutes earlier.
+  - All of it can still be changed.
+
 ### Place search
 - **Search by address.** Addresses and postal codes are looked up on OneMap (Singapore's official map), so "1000 ECP, #01-05 Marine Cove, Singapore 449876" works. Unit numbers and short forms like "ECP" or "Ave" are understood. Place names still use OpenStreetMap. Coordinates are no longer suggested.
 - **Google Maps links.** Pasting what Google Maps copies when you tap Share (name, address and link) looks up the place and suggests its name. Long links give the exact spot plus the name and address.

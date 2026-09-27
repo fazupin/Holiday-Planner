@@ -907,7 +907,7 @@
         text: `${result === 'in' ? 'Voting ended: going ✓' : 'Voting ended: not going'} · ${t.yes.length} Yes, ${t.no.length} No` }));
     }
     for (const h of p.history.filter(x => x.round < p.round)) {
-      const how = h.how === 'deadline' ? ' when time ran out' : h.how === 'manual' ? ' early' : h.how === 'confirm' ? ' by confirming' : '';
+      const how = h.how === 'deadline' ? ' when time ran out' : h.how === 'allvoted' ? ' when everyone had voted' : h.how === 'manual' ? ' early' : h.how === 'confirm' ? ' by confirming' : '';
       status.append(el('p', { class: 'pastround',
         text: `${h.round === 1 ? 'First vote' : `Round ${h.round}`}: ${h.result === 'in' ? 'going' : 'not going'} · ${h.yes} Yes, ${h.no} No · ended${how}, ${fmtWhen(h.at)}` }));
     }
@@ -1562,18 +1562,25 @@
   const stopIdFor = p => 'p_' + p.id;
   // A voting deadline this many minutes from now (none for 0). Each place has its own.
   const deadlineIn = mins => (mins > 0 ? Date.now() + mins * 60000 : null);
+  // A new itinerary stop for a place that's in: today if it's a trip day (else the first day),
+  // at the nearest whole hour to now, meeting at the nearest MRT 15 minutes earlier.
+  // Everyone can change these afterwards.
+  const nearestHour = (d = new Date()) => `${String((d.getHours() + (d.getMinutes() >= 30 ? 1 : 0)) % 24).padStart(2, '0')}:00`;
   function newStopFor(p) {
     const days = tripDays(currentProject());
+    const t = new Date(), today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const time = nearestHour(t);
     return {
-      title: p.name, icon: p.icon, placeId: p.id, date: days[0] || '', time: '',
-      ptWhere: nearestStation(p.lat, p.lng), ptTime: '', carWhere: '', carTime: '', notes: '',
+      title: p.name, icon: p.icon, placeId: p.id, date: days.includes(today) ? today : days[0] || '', time,
+      ptWhere: nearestStation(p.lat, p.lng), ptTime: minusMinutes(time, 15), carWhere: '', carTime: '', notes: '',
       createdBy: me.uid, createdAt: now(), updatedAt: now(), expireAt: expiry(),
     };
   }
 
   // End voting on a place and act on the result, all in one step so two people's apps can't
   // both do it: "in" (Yes ahead of No) adds it to the itinerary, "out" takes it off.
-  // how: 'manual' (End voting now), 'deadline' (time ran out) or 'confirm' (confirmed by hand, always "in").
+  // how: 'manual' (End voting now), 'deadline' (time ran out), 'allvoted' (everyone voted)
+  // or 'confirm' (confirmed by hand, always "in").
   // Returns the result, or null if someone else had already ended it.
   async function concludeVoting(p, how) {
     const placeRef = col('places').doc(p.id);
@@ -1641,15 +1648,30 @@
     await batch.commit();
   }
 
-  // When a place's voting deadline passes, whoever has the project open ends the voting.
-  // Only once everyone's votes have loaded, so the result counts every vote cast in time.
+  // True once everyone in the project has voted Yes or No in this place's current round.
+  function everyoneVoted(p) {
+    const proj = currentProject();
+    if (!proj || !proj.memberIds.length) return false;
+    const key = voteKey(p);
+    return proj.memberIds.every(uid => { const v = ((ballots[uid] || {}).votes || {})[key]; return v === 'yes' || v === 'no'; });
+  }
+  // Voting ends by itself when its deadline passes or when everyone has voted; whoever has the
+  // project open saves it. Only once everyone's votes have loaded, so the result counts every vote.
   const concluding = new Set();
   function checkDeadlines() {
     if (!projectId || !me || !votesLoaded) return;
     for (const p of places) {
-      if (p.status === 'closed' || !deadlinePassed(p) || concluding.has(p.id)) continue;
+      if (p.status === 'closed' || concluding.has(p.id)) continue;
+      const how = deadlinePassed(p) ? 'deadline' : everyoneVoted(p) ? 'allvoted' : null;
+      if (!how) continue;
       concluding.add(p.id);
-      concludeVoting(p, 'deadline').catch(() => {}).finally(() => concluding.delete(p.id));
+      concludeVoting(p, how).then(r => {
+        if (how !== 'allvoted' || !r) return;
+        const stop = r === 'in' && itinerary.find(s => s.id === stopIdFor(p));
+        toast(r === 'in'
+          ? `Everyone voted: ${p.name} is going. It's in the itinerary${stop && stop.time ? ` at ${fmtTime(stop.time)}` : ''}.`
+          : `Everyone voted: ${p.name} is not going.`);
+      }).catch(() => {}).finally(() => concluding.delete(p.id));
     }
   }
   // Every 30 seconds: close any voting whose time is up, and refresh the countdowns.
