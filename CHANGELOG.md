@@ -2,6 +2,10 @@
 
 A record of how Wanderly was built, one iteration at a time. The newest changes are at the top. Commit hashes link each change to the git history.
 
+## Version 1 (27 September 2026)
+
+The first version for testing with friends in real life. Everything below is included. Tagged `v1.0` in git.
+
 ## 27 September 2026
 
 ### Itinerary meeting points
