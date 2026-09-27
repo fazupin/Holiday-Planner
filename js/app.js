@@ -1609,9 +1609,9 @@
   // at the nearest whole hour to now, meeting at the nearest MRT 15 minutes earlier.
   // Everyone can change these afterwards.
   const nearestHour = (d = new Date()) => `${String((d.getHours() + (d.getMinutes() >= 30 ? 1 : 0)) % 24).padStart(2, '0')}:00`;
-  function newStopFor(p) {
+  function newStopFor(p, endedAt) {
     const days = tripDays(currentProject());
-    const t = new Date(), today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const t = new Date(endedAt || Date.now()), today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
     const time = nearestHour(t);
     return {
       title: p.name, icon: p.icon, placeId: p.id, date: days.includes(today) ? today : days[0] || '', time,
@@ -1639,13 +1639,15 @@
       const alreadyClosed = cur.status === 'closed';
       if (alreadyClosed && how !== 'confirm') return; // someone else just ended it
       const result = how === 'confirm' ? 'in' : (t.yes.length > t.no.length ? 'in' : 'out');
+      // When time ran out, it ended at the deadline, even if nobody had the app open right then.
+      const endedAt = how === 'deadline' && cur.voteEndsAt ? Math.min(cur.voteEndsAt, Date.now()) : Date.now();
       if (!alreadyClosed) {
-        const entry = { round: cur.round, result, yes: t.yes.length, no: t.no.length, at: Date.now(), how };
-        tx.update(placeRef, { status: 'closed', result, closedAt: Date.now(), history: [...cur.history, entry].slice(-10), updatedAt: now() });
+        const entry = { round: cur.round, result, yes: t.yes.length, no: t.no.length, at: endedAt, how };
+        tx.update(placeRef, { status: 'closed', result, closedAt: endedAt, history: [...cur.history, entry].slice(-10), updatedAt: now() });
       } else if (cur.result !== 'in') {
         tx.update(placeRef, { result: 'in', updatedAt: now() });
       }
-      if (result === 'in' && !stopSnap.exists && !addedByHand) { tx.set(stopRef, newStopFor(cur)); addedStop = true; }
+      if (result === 'in' && !stopSnap.exists && !addedByHand) { tx.set(stopRef, newStopFor(cur, endedAt)); addedStop = true; }
       if (result === 'out' && stopSnap.exists) tx.delete(stopRef);
       outcomeNow = result;
     });

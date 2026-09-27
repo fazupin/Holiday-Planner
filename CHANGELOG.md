@@ -4,7 +4,11 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Home-screen icon
+- **PNG app icons** (`assets/apple-touch-icon.png`, `icon-192.png`, `icon-512.png`), so Wanderly shows its pink pin icon when added to an iPhone or Android home screen.
+
 ### Automatic voting results
+- **Time-limit results use the real end time.** If nobody had the app open when time ran out, the result is still dated at the deadline, and the itinerary time is based on it.
 - **Voting ends by itself once everyone has voted.** If Yes is ahead, the place goes into the itinerary; otherwise it's greyed out. Earlier rounds show "ended when everyone had voted".
 - **Stops added automatically come with a time and meeting point.**
   - The time is the nearest whole hour when voting ended (12:34 pm becomes 1 pm).
