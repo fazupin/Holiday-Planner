@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy Policy – Wanderly</title>
   <script>
+    // Old addresses open the main site (see index.html).
+    (function () {
+      var h = location.hostname, main = 'https://wander-ly-50ea5.firebaseapp.com';
+      if (h === 'wander-ly-50ea5.web.app') location.replace(main + location.pathname + location.search + location.hash);
+      else if (h === 'fazupin.github.io') location.replace(main + (location.pathname.replace(/^\/Holiday-Planner/i, '') || '/') + location.search + location.hash);
+    })();
     try { var t = (JSON.parse(localStorage.getItem('wanderly-settings') || '{}')).theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">

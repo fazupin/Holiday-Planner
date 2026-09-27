@@ -10,4 +10,4 @@
 
 ## Project
 
-Wanderly is a plain HTML/CSS/JS group trip planner with no build step: friends suggest Singapore places, then vote on them. It uses Leaflet with an OpenFreeMap street map (hand-drawn Singapore outline as fallback), OpenStreetMap data via Nominatim and Overpass for place search, MRT stations and bus stops, and Firebase for Google sign-in and shared data (see `SETUP.md`). Google sign-in doesn't work from `file://`, so run it from GitHub Pages or a local web server (e.g. `python -m http.server 8000`).
+Wanderly is a plain HTML/CSS/JS group trip planner with no build step: friends suggest Singapore places, then vote on them. It uses Leaflet with an OpenFreeMap street map (hand-drawn Singapore outline as fallback), OneMap for address and postal-code search, OpenStreetMap data via Nominatim and Overpass for place search, areas, MRT stations and bus stops, and Firebase for Google sign-in and shared data (see `SETUP.md`). The live site is Firebase Hosting (`wander-ly-50ea5.firebaseapp.com`); the GitHub Pages address redirects there. Google sign-in doesn't work from `file://`, so test on a local web server (e.g. `python -m http.server 8000`).

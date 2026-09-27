@@ -4,6 +4,9 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Hosting
+- **Old addresses open the main site.** The GitHub Pages address (and `wander-ly-50ea5.web.app`) now open `wander-ly-50ea5.firebaseapp.com`, keeping the page and any invite link, since Google sign-in on phones only works there.
+
 ### Home-screen icon
 - **PNG app icons** (`assets/apple-touch-icon.png`, `icon-192.png`, `icon-512.png`), so Wanderly shows its pink pin icon when added to an iPhone or Android home screen.
 

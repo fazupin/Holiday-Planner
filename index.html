@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Wanderly – Singapore Trip Picks</title>
   <script>
-    // Firebase Hosting serves the site at two addresses. Google sign-in only works reliably on
-    // phones at firebaseapp.com (the same address as Firebase's sign-in helper), so use that one.
-    if (location.hostname === 'wander-ly-50ea5.web.app') location.replace('https://wander-ly-50ea5.firebaseapp.com' + location.pathname + location.search + location.hash);
+    // The site is also at wander-ly-50ea5.web.app and the old GitHub Pages address, but Google
+    // sign-in only works reliably on phones at firebaseapp.com (the same address as Firebase's
+    // sign-in helper), so send everyone there, keeping the page, invite link and anything after it.
+    (function () {
+      var h = location.hostname, main = 'https://wander-ly-50ea5.firebaseapp.com';
+      if (h === 'wander-ly-50ea5.web.app') location.replace(main + location.pathname + location.search + location.hash);
+      else if (h === 'fazupin.github.io') location.replace(main + (location.pathname.replace(/^\/Holiday-Planner/i, '') || '/') + location.search + location.hash);
+    })();
     // Apply the theme chosen in Settings before the page draws, so it doesn't flash.
     try { var t = (JSON.parse(localStorage.getItem('wanderly-settings') || '{}')).theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
   </script>

@@ -86,7 +86,7 @@ On iPhones, and on some Android browsers, Google sign-in fails with "Unable to s
 5. **Delete the downloaded `.json` file** from your computer. Never put it in the project folder or share it. It lets anyone publish to your site.
 6. **Publish.** On GitHub, open **Actions → Deploy to Firebase Hosting → Run workflow**. Wait for the green tick, then open <https://wander-ly-50ea5.firebaseapp.com>.
 
-From then on, every push publishes automatically. Share the **firebaseapp.com** link with friends. The GitHub Pages link still works, but sign-in may fail on phones.
+From then on, every push publishes automatically. Share the **firebaseapp.com** link with friends. The GitHub Pages address and `wander-ly-50ea5.web.app` automatically open the firebaseapp.com address, because Google sign-in on phones only works there.
 
 ## 7. Invite your friends
 
