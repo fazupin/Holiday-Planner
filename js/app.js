@@ -2066,6 +2066,7 @@
       projectsLoaded = true;
       if (pending && projects.some(p => p.id === pending)) { const pid = pending; pending = null; openProject(pid); return; }
       if (projectId && !currentProject()) closeProject(); // removed from it, or it's gone
+      cleanUpExpiredProjects();
       renderProjects();
     }, onDenied);
   }
@@ -2098,6 +2099,36 @@
     const p = currentProject();
     if (p && Date.now() - p.lastActiveAt > 864e5) {
       db.collection('projects').doc(pid).update({ lastActiveAt: now(), expireAt: expiry() }).catch(() => {});
+    }
+    cleanUpOldMessages(pid).catch(() => {});
+  }
+
+  // ---------- deleting old data ----------
+  // Firebase's automatic deletion (TTL) needs a paid plan, so the app does it itself, as the
+  // Privacy Policy says: a project nobody has opened for 12 months is deleted the next time its
+  // owner (or its last member) signs in, and chat messages older than 12 months are deleted when
+  // the project is opened. Only people the security rules allow can delete, so each person's app
+  // removes what it's allowed to: the owner everything, everyone else their own messages.
+  const YEAR_MS = 365 * 864e5;
+  const cleaningUp = new Set();
+  function cleanUpExpiredProjects() {
+    for (const p of projects) {
+      if (!p.lastActiveAt || Date.now() - p.lastActiveAt < YEAR_MS || p.id === projectId || cleaningUp.has(p.id)) continue;
+      if (p.createdBy !== me.uid && p.memberIds.length > 1) continue; // left for the owner to delete
+      cleaningUp.add(p.id);
+      deleteProjectData(p.id).catch(() => cleaningUp.delete(p.id));
+    }
+  }
+  async function cleanUpOldMessages(pid) {
+    const proj = projects.find(x => x.id === pid);
+    const owner = !!proj && proj.createdBy === me.uid;
+    const cutoff = firebase.firestore.Timestamp.fromMillis(Date.now() - YEAR_MS);
+    const snap = await db.collection('projects').doc(pid).collection('messages').where('createdAt', '<', cutoff).limit(300).get();
+    const mine = snap.docs.filter(d => owner || (d.data() || {}).uid === me.uid);
+    for (let i = 0; i < mine.length; i += 400) {
+      const batch = db.batch();
+      mine.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+      await batch.commit();
     }
   }
 

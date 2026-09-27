@@ -111,19 +111,15 @@ Whenever `firestore.rules` changes, paste it into **Firestore → Rules** and cl
    - Privacy policy: `https://wander-ly-50ea5.firebaseapp.com/privacy.html`
    - Terms of service: `https://wander-ly-50ea5.firebaseapp.com/terms.html`
 
-### Delete data automatically after 12 months
-Everything the app saves has an `expireAt` date 12 months ahead. Opening a project pushes its date back. To make Firebase delete expired data:
+### Deleting data after 12 months
+Firebase's automatic deletion (Time-to-live) only works with billing turned on, so on the free Spark plan the app deletes old data itself:
 
-1. In the Google Cloud console, open **Firestore → Time-to-live (TTL)**.
-2. Create a policy for each of these collection groups, all using the timestamp field `expireAt`:
-   - `projects`
-   - `places`
-   - `votes`
-   - `messages`
-   - `itinerary`
-   - `reservations`
+- A project nobody has opened for 12 months is deleted, with everything in it, the next time its owner signs in.
+- Chat messages older than 12 months are deleted when their project is opened.
 
-If Google asks you to upgrade to a paid plan for this, skip it and tell me. We can remove old projects another way.
+Nothing to set up. If a project's people never sign in again, delete it by hand: in Firebase, open **Firestore**, find the project under `projects`, and delete it along with its sub-collections.
+
+Everything the app saves also has an `expireAt` date. If you ever move to the paid **Blaze** plan, you can add TTL policies on `expireAt` (Google Cloud console → **Firestore → Time-to-live**) for `projects`, `places`, `votes`, `messages`, `itinerary` and `reservations`.
 
 ### Stop bots (App Check), optional
 1. Go to <https://www.google.com/recaptcha/admin> and create a **reCAPTCHA v3** key. Add the domain `wander-ly-50ea5.firebaseapp.com`, and `localhost` if you test locally.

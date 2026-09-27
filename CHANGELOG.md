@@ -4,6 +4,12 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Deleting old data
+- **The app deletes old data itself**, since Firebase's automatic deletion (TTL) needs a paid plan.
+  - A project nobody has opened for 12 months is deleted the next time its owner signs in.
+  - Chat messages older than 12 months are deleted when their project is opened.
+  - The Privacy Policy and SETUP.md now describe this.
+
 ### Hosting
 - **Old addresses open the main site.** The GitHub Pages address (and `wander-ly-50ea5.web.app`) now open `wander-ly-50ea5.firebaseapp.com`, keeping the page and any invite link, since Google sign-in on phones only works there.
 
