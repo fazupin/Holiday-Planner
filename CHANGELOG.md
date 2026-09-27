@@ -4,6 +4,21 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Voting controls
+- **Rename a place.** Anyone in the project can rename it, and a matching itinerary stop is renamed too.
+- **End voting now.** Voting on a place can be ended early.
+  - If Yes is ahead of No, the place goes into the itinerary automatically.
+  - Otherwise it's greyed out, and taken out of the itinerary if it was in.
+- **Confirm anyway.** A place can go into the itinerary without enough votes.
+- **Remove from itinerary.** A place can be taken out even if it was voted Yes.
+- **Voting time limit.** Set per project, from 30 minutes to 3 days.
+  - Each new place counts down, for example "⏱ 1 h 20 min left to vote".
+  - When time runs out, the votes cast so far decide the result.
+  - If nobody voted, the place goes grey.
+- **Reopen voting.** A new round where everyone votes again.
+  - Earlier results stay visible, for example "First vote: not going · 0 Yes, 1 No".
+  - Earlier votes are kept separately, not overwritten.
+
 ### Itinerary
 - **Confirm voted places into the itinerary** (`06c55df`)
   - Once more than half the group votes Yes on a place, and Yes is ahead of No, a **Confirm location** button appears.

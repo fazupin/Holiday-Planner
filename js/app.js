@@ -485,6 +485,8 @@
   let messages = [];          // oldest first
   let loaded = false;
   let selectedId = null;
+  let renamingPlace = null;   // id of the place whose name is being edited
+  let votesLoaded = false;    // true once everyone's votes have arrived (needed before ending votes by deadline)
   let adding = false, draft = null, draftMarker = null, prefill = null;
   let voteBlocked = false;
   let activeTab = 'vote', seenAt = Date.now();
@@ -511,18 +513,44 @@
       activities: Array.isArray(x.activities) ? x.activities.slice(0, 12).map(a => str(a, 160)).filter(Boolean) : [],
       lat, lng, addedBy: typeof x.addedBy === 'string' ? x.addedBy : null, addedByName: str(x.addedByName, 60),
       source: str(x.source, 12),
+      // Voting: open or closed (ended by hand, by its deadline, or by confirming), which round it's
+      // in (reopening starts a new round), when it closes, and the results of earlier rounds.
+      status: x.status === 'closed' ? 'closed' : 'open',
+      result: x.result === 'in' || x.result === 'out' ? x.result : null,
+      round: Number.isInteger(x.round) && x.round > 0 ? x.round : 1,
+      voteEndsAt: typeof x.voteEndsAt === 'number' ? x.voteEndsAt : null,
+      history: Array.isArray(x.history) ? x.history.slice(-10).map(h => ({
+        round: Number(h && h.round) || 1, result: h && h.result === 'in' ? 'in' : 'out',
+        yes: Number(h && h.yes) || 0, no: Number(h && h.no) || 0, at: Number(h && h.at) || 0, how: str(h && h.how, 10),
+      })) : [],
     };
   }
+  // Each voting round has its own key in people's ballots, so reopening a place starts fresh
+  // without touching anyone's earlier votes: round 1 uses the place id, round 2 "id~r2", and so on.
+  const voteKey = p => (p.round > 1 ? `${p.id}~r${p.round}` : p.id);
   function tally(pid) {
+    const p = places.find(q => q.id === pid);
+    const key = p ? voteKey(p) : pid;
     const yes = [], no = [];
     for (const [uid, b] of Object.entries(ballots)) {
-      if (b.votes[pid] === 'yes') yes.push(uid);
-      else if (b.votes[pid] === 'no') no.push(uid);
+      if (b.votes[key] === 'yes') yes.push(uid);
+      else if (b.votes[key] === 'no') no.push(uid);
     }
     return { yes, no };
   }
-  // A place is "voted out" when more people said No than Yes. It stays until someone deletes it.
-  const isVotedOut = t => t.no.length > t.yes.length;
+  // Voting result: 'in' (going), 'out' (not going), or null while voting is still open.
+  // Once the deadline passes, the result is fixed from the votes cast in time, even before
+  // someone's app has saved it.
+  const deadlinePassed = p => !!p.voteEndsAt && Date.now() >= p.voteEndsAt;
+  function outcome(p, t) {
+    if (p.status === 'closed') return p.result || 'out';
+    if (deadlinePassed(p)) return t.yes.length > t.no.length ? 'in' : 'out';
+    return null;
+  }
+  const votingOpen = p => p.status !== 'closed' && !deadlinePassed(p);
+  // A place is greyed out when its voting ended as "not going" (including nobody voting),
+  // or while voting is open and more people said No than Yes.
+  const isVotedOut = (t, p) => { const o = p ? outcome(p, t) : null; return o === 'out' || (o === null && t.no.length > t.yes.length); };
   const ranked = () => places.map(p => ({ p, t: tally(p.id) }))
     .sort((a, b) => (b.t.yes.length - b.t.no.length) - (a.t.yes.length - a.t.no.length)
       || b.t.yes.length - a.t.yes.length || a.p.name.localeCompare(b.p.name));
@@ -541,7 +569,7 @@
     const seen = new Set();
     for (const p of places) {
       seen.add(p.id);
-      const t = tally(p.id), yes = t.yes.length, sel = p.id === selectedId, out = isVotedOut(t);
+      const t = tally(p.id), yes = t.yes.length, sel = p.id === selectedId, out = isVotedOut(t, p);
       const key = [p.icon, p.name, yes, sel, out, p.lat, p.lng].join('|');
       let it = markers.get(p.id);
       if (!it) {
@@ -580,6 +608,7 @@
   }
   function select(id, fly) {
     selectedId = id;
+    renamingPlace = null;
     showTab('vote');
     const p = places.find(q => q.id === id);
     if (p && fly) map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15), { duration: reduceMotion ? 0 : 0.6 });
@@ -590,8 +619,11 @@
   let voteChain = Promise.resolve();
   function vote(pid, v) {
     if (!db || !me || voteBlocked) return;
+    const place = places.find(q => q.id === pid);
+    if (!place || !votingOpen(place)) { toast('Voting on this place has ended. Reopen it to vote again.'); return; }
+    const key = voteKey(place);
     const mine = { ...((ballots[me.uid] || {}).votes || {}) };
-    if (mine[pid] === v) delete mine[pid]; else mine[pid] = v;
+    if (mine[key] === v) delete mine[key]; else mine[key] = v;
     ballots = { ...ballots, [me.uid]: { votes: mine, name: me.displayName || '', photo: me.photoURL || '' } };
     renderAll();
     voteChain = voteChain
@@ -710,7 +742,7 @@
         activities: $('#fActs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12).map(s => str(s, 160)),
         lat: +draft.lat.toFixed(6), lng: +draft.lng.toFixed(6),
         addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(),
-        source: pre.source || 'map', expireAt: expiry(),
+        source: pre.source || 'map', expireAt: expiry(), voteEndsAt: voteDeadline(),
       };
       save.disabled = true; save.textContent = 'Saving…'; err.hidden = true;
       try {
@@ -738,7 +770,7 @@
       const batch = db.batch();
       for (const s of STARTERS) {
         batch.set(col('places').doc(), {
-          ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter', expireAt: expiry(),
+          ...s, addedBy: me.uid, addedByName: me.displayName || null, createdAt: now(), source: 'starter', expireAt: expiry(), voteEndsAt: voteDeadline(),
         });
       }
       await batch.commit();
@@ -781,32 +813,75 @@
     }
 
     const t = tally(p.id);
-    const mine = me ? ((ballots[me.uid] || {}).votes || {})[p.id] : undefined;
+    const open = votingOpen(p);
+    const result = outcome(p, t);
+    const mine = me ? ((ballots[me.uid] || {}).votes || {})[voteKey(p)] : undefined;
     const meta = [p.area, p.mrt].filter(Boolean).join(' · ');
     const gmaps = el('a', { href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener', text: 'Open in Google Maps' });
     const byline = p.addedByName ? `Suggested by ${p.addedBy === (me && me.uid) ? 'you' : p.addedByName}` : '';
-    const out = isVotedOut(t);
+    const out = isVotedOut(t, p);
+
+    // Place name, with Rename for anyone in the project.
+    let nameEl;
+    if (renamingPlace === p.id) {
+      const input = el('input', { id: 'placeRename', maxlength: '80', 'aria-label': 'Place name', required: '' });
+      input.value = p.name;
+      const save = el('button', { class: 'primary', type: 'submit', text: 'Save' });
+      const cancel = el('button', { class: 'ghost', type: 'button', text: 'Cancel' });
+      nameEl = el('form', { class: 'inlineform renameform' }, input, save, cancel);
+      cancel.onclick = () => { renamingPlace = null; renderDetail(); };
+      nameEl.onsubmit = async e => {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (!v || v === p.name) { renamingPlace = null; renderDetail(); return; }
+        save.disabled = true;
+        try { await renamePlace(p, v); renamingPlace = null; renderDetail(); toast('Renamed'); }
+        catch { save.disabled = false; toast("Couldn't rename the place. Try again."); }
+      };
+      setTimeout(() => { input.focus(); input.select(); });
+    } else {
+      const rn = el('button', { class: 'linkbtn renamebtn', type: 'button', text: 'Rename' });
+      rn.onclick = () => { renamingPlace = p.id; renderDetail(); };
+      nameEl = el('div', { class: 'namerow' }, el('h2', { text: p.name }), me ? rn : null);
+    }
+    const outText = result === 'out'
+      ? `Voting ended: not going (${t.yes.length} Yes, ${t.no.length} No). It's greyed out on the map. You can reopen voting below.`
+      : `More people voted No than Yes (${t.no.length} to ${t.yes.length}), so it's greyed out for now. Votes can still change.`;
     box.append(el('div', { class: 'place' + (out ? ' out' : '') },
-      out ? el('p', { class: 'outnote', text: `Voted out: ${t.no.length} No vs ${t.yes.length} Yes. It's greyed out on the map. Anyone can delete it below, or votes can still change.` }) : null,
+      out ? el('p', { class: 'outnote', text: outText }) : null,
       el('div', { class: 'phead' },
         el('div', { class: 'bigicon', 'aria-hidden': 'true', text: p.icon }),
-        el('div', {}, el('h2', { text: p.name }), meta ? el('p', { class: 'meta', text: meta }) : null,
+        el('div', { class: 'pheadtext' }, nameEl, meta ? el('p', { class: 'meta', text: meta }) : null,
           el('div', { class: 'coords' }, coordText(p.lat, p.lng), gmaps))),
       p.blurb ? el('p', { class: 'blurb', text: p.blurb }) : null,
       p.activities.length ? el('p', { class: 'eyebrow', text: 'Things to do' }) : null,
       p.activities.length ? el('ul', { class: 'acts' }, ...p.activities.map(a => el('li', { text: a }))) : null,
       byline ? el('p', { class: 'srcnote', text: byline }) : null));
 
+    // Voting status: time left, or how it ended, plus the results of earlier rounds.
+    const status = el('div', { class: 'votestatus' });
+    if (open && p.round > 1) status.append(el('p', { class: 'roundlabel', text: `Round ${p.round}: voting was reopened, so everyone votes again.` }));
+    if (open && p.voteEndsAt) status.append(el('p', { class: 'deadline', text: `⏱ Voting ends in ${timeLeft(p.voteEndsAt)} (${fmtWhen(p.voteEndsAt)})` }));
+    if (!open) {
+      status.append(el('p', { class: 'ended ' + (result === 'in' ? 'in' : 'out'),
+        text: `${result === 'in' ? 'Voting ended: going ✓' : 'Voting ended: not going'} · ${t.yes.length} Yes, ${t.no.length} No` }));
+    }
+    for (const h of p.history.filter(x => x.round < p.round)) {
+      const how = h.how === 'deadline' ? ' when time ran out' : h.how === 'manual' ? ' early' : h.how === 'confirm' ? ' by confirming' : '';
+      status.append(el('p', { class: 'pastround',
+        text: `${h.round === 1 ? 'First vote' : `Round ${h.round}`}: ${h.result === 'in' ? 'going' : 'not going'} · ${h.yes} Yes, ${h.no} No · ended${how}, ${fmtWhen(h.at)}` }));
+    }
+
     const yesB = el('button', { class: 'vbtn yes', type: 'button', 'aria-pressed': String(mine === 'yes'), text: "Yes, I'm in" });
     const noB = el('button', { class: 'vbtn no', type: 'button', 'aria-pressed': String(mine === 'no'), text: 'No, skip it' });
-    yesB.disabled = noB.disabled = !me || voteBlocked;
+    yesB.disabled = noB.disabled = !me || voteBlocked || !open;
     yesB.onclick = () => vote(p.id, 'yes');
     noB.onclick = () => vote(p.id, 'no');
     const total = t.yes.length + t.no.length;
     const pct = n => `width:${total ? (n / total) * 100 : 0}%`;
     const voterList = ids => {
       const ul = el('ul', { class: 'chips' });
-      if (!ids.length) ul.append(el('li', { class: 'none', text: 'Nobody yet' }));
+      if (!ids.length) ul.append(el('li', { class: 'none', text: 'Nobody' + (open ? ' yet' : '') }));
       for (const uid of ids) {
         const b = ballots[uid] || {};
         ul.append(el('li', {},
@@ -815,35 +890,80 @@
       }
       return ul;
     };
+    const vnote = voteBlocked ? "You can't vote on this trip. Ask the organiser to add your Google account."
+      : !open ? 'Voting has ended. Reopen it below to vote again.'
+      : mine ? 'Tap your vote again to take it back.' : 'Everyone on the trip can see your vote.';
     box.append(
       el('p', { class: 'eyebrow', text: 'Do you want to go?' }),
+      status.childNodes.length ? status : null,
       el('div', { class: 'votebtns' }, yesB, noB),
-      el('p', { class: 'vnote', text: voteBlocked ? "You can't vote on this trip. Ask the organiser to add your Google account." : mine ? 'Tap your vote again to take it back.' : 'Everyone on the trip can see your vote.' }),
+      el('p', { class: 'vnote', text: vnote }),
       el('div', { class: 'tbar', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })),
       el('div', { class: 'voters' },
         el('div', {}, el('h4', { class: 'yh', text: `Yes · ${t.yes.length}` }), voterList(t.yes)),
         el('div', {}, el('h4', { class: 'nh', text: `No · ${t.no.length}` }), voterList(t.no))));
 
-    // Confirm location: once more than half the group has voted Yes (and Yes beats No),
-    // anyone can confirm the place, which adds it to the itinerary.
-    const stop = itinerary.find(s => s.placeId === p.id);
+    // End voting now (while open) or reopen it (once ended). Both ask to confirm first.
+    if (me) {
+      const armed = (label, confirmText, note, action) => {
+        const b = el('button', { class: 'ghost small-btn', type: 'button', text: label });
+        const cancel = el('button', { class: 'ghost small-btn', type: 'button', text: 'Cancel', hidden: '' });
+        const why = el('p', { class: 'small', hidden: '' });
+        let ready = false;
+        const reset = () => { ready = false; b.textContent = label; cancel.hidden = true; why.hidden = true; };
+        cancel.onclick = reset;
+        b.onclick = async () => {
+          if (!ready) { ready = true; b.textContent = confirmText; why.textContent = note; why.hidden = false; cancel.hidden = false; return; }
+          b.disabled = true; cancel.hidden = true;
+          try { await action(); } catch { b.disabled = false; reset(); toast("That didn't work. Check your connection and try again."); }
+        };
+        return el('div', { class: 'confirmbox votectl' }, why, el('div', { class: 'row2' }, b, cancel));
+      };
+      if (open) {
+        box.append(armed('End voting now', 'Yes, end voting',
+          `Ends voting with the votes so far (${t.yes.length} Yes, ${t.no.length} No). If Yes is ahead, ${p.name} goes into the itinerary; otherwise it's greyed out.`,
+          async () => { const r = await concludeVoting(p, 'manual'); toast(r === 'in' ? `Voting ended: ${p.name} is going, and it's in the itinerary.` : `Voting ended: ${p.name} is not going.`); }));
+      } else {
+        const limit = (currentProject() || {}).voteLimitMins || 0;
+        box.append(armed('Reopen voting', 'Yes, reopen',
+          `Starts a new round where everyone votes again${limit ? `, for ${fmtLimit(limit)}` : ''}. This round's result stays visible.`,
+          async () => { await reopenVoting(p); toast('Voting reopened. Everyone can vote again.'); }));
+      }
+    }
+
+    // Itinerary: confirmed places are in it. You can confirm a place without enough votes,
+    // or take a place out of the itinerary even if it was voted in.
+    const stops = itinerary.filter(s => s.placeId === p.id);
     const need = votesNeeded();
     const confirmBox = el('div', { class: 'confirmzone' });
-    if (stop) {
+    if (stops.length) {
+      const stop = stops[0];
       const see = el('button', { class: 'linkbtn', type: 'button', text: 'See it in the itinerary' });
       see.onclick = () => showTab('itin');
       const when = [stop.date ? fmtDate(stop.date) : '', stop.time ? fmtTime(stop.time) : ''].filter(Boolean).join(', ');
-      confirmBox.append(el('p', { class: 'confirmed', text: `✓ Confirmed${when ? ` · ${when}` : ''}` }), see);
-    } else if (me && t.yes.length > t.no.length && t.yes.length >= need) {
-      const btn = el('button', { class: 'primary', type: 'button', text: '✓ Confirm location' });
-      btn.onclick = async () => {
-        btn.disabled = true; btn.textContent = 'Confirming…';
-        try { await confirmPlace(p); }
-        catch { btn.disabled = false; btn.textContent = '✓ Confirm location'; toast("Couldn't confirm the place. Try again."); }
+      const remove = el('button', { class: 'msgbtn', type: 'button', text: 'Remove from itinerary' });
+      let ready = false;
+      remove.onclick = async () => {
+        if (!ready) { ready = true; remove.textContent = 'Tap again to remove it'; remove.classList.add('armed'); return; }
+        remove.disabled = true;
+        try { await removeFromItinerary(p); toast(`${p.name} was taken out of the itinerary.`); }
+        catch { remove.disabled = false; toast("Couldn't remove it. Try again."); }
       };
-      confirmBox.append(btn, el('p', { class: 'small', text: 'Most of the group wants to go. Confirming adds it to the itinerary, where you can set the meeting time.' }));
-    } else {
-      confirmBox.append(el('p', { class: 'small', text: `Confirm location unlocks when at least ${need} ${need === 1 ? 'person votes' : 'people vote'} Yes, and Yes is ahead of No.` }));
+      confirmBox.append(el('p', { class: 'confirmed', text: `✓ In the itinerary${when ? ` · ${when}` : ''}` }), el('div', { class: 'row2' }, see, remove));
+    } else if (me) {
+      const eligible = open && t.yes.length > t.no.length && t.yes.length >= need;
+      const label = eligible ? '✓ Confirm location' : result === 'in' ? 'Add to itinerary' : 'Confirm anyway';
+      const btn = el('button', { class: eligible || result === 'in' ? 'primary' : 'ghost small-btn', type: 'button', text: label });
+      btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = 'Adding…';
+        try { await confirmPlace(p); }
+        catch { btn.disabled = false; btn.textContent = label; toast("Couldn't add it to the itinerary. Try again."); }
+      };
+      const note = eligible ? 'Most of the group wants to go. Confirming ends voting and adds it to the itinerary, where you can set the meeting time.'
+        : result === 'in' ? 'Voting said going, but it isn’t in the itinerary right now.'
+        : result === 'out' ? 'Voting said not going. If plans changed, you can still add it.'
+        : `Not enough votes to confirm yet (needs ${need} Yes, ahead of No). If the group decided another way, you can confirm it anyway.`;
+      confirmBox.append(btn, el('p', { class: 'small', text: note }));
     }
     box.append(confirmBox);
 
@@ -879,7 +999,7 @@
     const box = $('#bulk');
     box.replaceChildren();
     if (!me) return;
-    const rejected = places.filter(p => isVotedOut(tally(p.id)));
+    const rejected = places.filter(p => isVotedOut(tally(p.id), p));
     if (!rejected.length) { bulkArmed = false; return; }
     const names = rejected.map(p => p.name).join(', ');
     if (!bulkArmed) {
@@ -917,13 +1037,15 @@
     ranked().forEach(({ p, t }, i) => {
       const total = t.yes.length + t.no.length;
       const pct = n => `width:${total ? (n / total) * 100 : 0}%`;
-      const out = isVotedOut(t);
+      const out = isVotedOut(t, p);
       const b = el('button', { class: 'row' + (out ? ' out' : ''), type: 'button', 'aria-current': String(p.id === selectedId) },
         el('span', { class: 'pos', text: String(i + 1) }),
         el('span', { class: 'ic', 'aria-hidden': 'true', text: p.icon }),
         el('span', { class: 'nm' }, p.name, itinerary.some(s => s.placeId === p.id)
-          ? el('span', { class: 'ar confirmedtag', text: '✓ Confirmed' })
-          : el('span', { class: 'ar', text: out ? 'Voted out' : (p.area || coordText(p.lat, p.lng)) })),
+          ? el('span', { class: 'ar confirmedtag', text: '✓ In the itinerary' })
+          : out ? el('span', { class: 'ar', text: votingOpen(p) ? 'Voted out' : 'Voting ended: not going' })
+          : votingOpen(p) && p.voteEndsAt ? el('span', { class: 'ar deadlinetag', text: `⏱ ${timeLeft(p.voteEndsAt)} left to vote` })
+          : el('span', { class: 'ar', text: p.area || coordText(p.lat, p.lng) })),
         el('span', { class: 'ct' }, el('span', { class: 'y', text: `${t.yes.length} yes` }), el('span', { class: 'n', text: `${t.no.length} no` })),
         el('span', { class: 'mini', 'aria-hidden': 'true' }, el('span', { class: 'y', style: pct(t.yes.length) }), el('span', { class: 'n', style: pct(t.no.length) })));
       b.onclick = () => { if (adding) stopAdd(); select(p.id, true); };
@@ -934,7 +1056,7 @@
   function renderStats() {
     $('#nPlaces').textContent = places.length;
     const ids = new Set(places.map(p => p.id));
-    $('#nVoters').textContent = Object.values(ballots).filter(b => Object.keys(b.votes).some(k => ids.has(k))).length;
+    $('#nVoters').textContent = Object.values(ballots).filter(b => Object.keys(b.votes).some(k => ids.has(k.split('~')[0]))).length;
   }
 
   function renderAll() {
@@ -1213,20 +1335,120 @@
     const p = currentProject();
     return Math.floor(((p && p.members.length) || 1) / 2) + 1;
   }
-  // Confirm a voted place: add it to the itinerary on the trip's first day, meeting at the nearest
-  // MRT station, tell the group in the chat, then open it so someone can set the times.
-  async function confirmPlace(p) {
+  // ---------- ending, reopening and confirming votes ----------
+  // A place confirmed into the itinerary uses the stop id "p_<place id>", so however many people's
+  // apps confirm it at once (or it's confirmed again later), there's only ever one such stop.
+  const stopIdFor = p => 'p_' + p.id;
+  // A new place's voting deadline, from the project's voting time limit (none if there isn't one).
+  const voteDeadline = () => { const m = (currentProject() || {}).voteLimitMins || 0; return m ? Date.now() + m * 60000 : null; };
+  function newStopFor(p) {
     const days = tripDays(currentProject());
-    const data = {
+    return {
       title: p.name, icon: p.icon, placeId: p.id, date: days[0] || '', time: '',
       ptWhere: nearestStation(p.lat, p.lng), ptTime: '', carWhere: '', carTime: '', notes: '',
       createdBy: me.uid, createdAt: now(), updatedAt: now(), expireAt: expiry(),
     };
-    const ref = await col('itinerary').add(data);
-    postMessage({ kind: 'confirmed', placeId: p.id, placeName: p.name, placeIcon: p.icon }).catch(() => {});
-    openItinForm({ id: ref.id, fresh: true, pre: { ...data } });
-    toast(`${p.name} is confirmed. Set the time and where to meet.`);
   }
+
+  // End voting on a place and act on the result, all in one step so two people's apps can't
+  // both do it: "in" (Yes ahead of No) adds it to the itinerary, "out" takes it off.
+  // how: 'manual' (End voting now), 'deadline' (time ran out) or 'confirm' (confirmed by hand, always "in").
+  // Returns the result, or null if someone else had already ended it.
+  async function concludeVoting(p, how) {
+    const placeRef = col('places').doc(p.id);
+    const stopRef = col('itinerary').doc(stopIdFor(p));
+    const t = tally(p.id);
+    const addedByHand = itinerary.some(s => s.placeId === p.id && s.id !== stopIdFor(p)); // don't add it twice
+    let outcomeNow = null, addedStop = false;
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(placeRef);
+      const stopSnap = await tx.get(stopRef);
+      if (!snap.exists) return;
+      const cur = cleanPlace(snap);
+      const alreadyClosed = cur.status === 'closed';
+      if (alreadyClosed && how !== 'confirm') return; // someone else just ended it
+      const result = how === 'confirm' ? 'in' : (t.yes.length > t.no.length ? 'in' : 'out');
+      if (!alreadyClosed) {
+        const entry = { round: cur.round, result, yes: t.yes.length, no: t.no.length, at: Date.now(), how };
+        tx.update(placeRef, { status: 'closed', result, closedAt: Date.now(), history: [...cur.history, entry].slice(-10), updatedAt: now() });
+      } else if (cur.result !== 'in') {
+        tx.update(placeRef, { result: 'in', updatedAt: now() });
+      }
+      if (result === 'in' && !stopSnap.exists && !addedByHand) { tx.set(stopRef, newStopFor(cur)); addedStop = true; }
+      if (result === 'out' && stopSnap.exists) tx.delete(stopRef);
+      outcomeNow = result;
+    });
+    if (addedStop) postMessage({ kind: 'confirmed', placeId: p.id, placeName: p.name, placeIcon: p.icon }).catch(() => {});
+    return outcomeNow;
+  }
+
+  // Confirm a place by hand (with or without enough votes): ends voting as "going", adds it to
+  // the itinerary, then opens the stop so someone can set the time and where to meet.
+  async function confirmPlace(p) {
+    await concludeVoting(p, 'confirm');
+    const stop = itinerary.find(s => s.id === stopIdFor(p));
+    openItinForm({ id: stopIdFor(p), fresh: !stop || !stop.time, pre: stop || newStopFor(p) });
+    toast(`${p.name} is in the itinerary. Set the time and where to meet.`);
+  }
+
+  // Reopen voting: a new round where everyone votes again. Earlier results stay in the history.
+  async function reopenVoting(p) {
+    const limit = (currentProject() || {}).voteLimitMins || 0;
+    await col('places').doc(p.id).update({
+      status: 'open', result: null, round: p.round + 1,
+      voteEndsAt: limit ? Date.now() + limit * 60000 : null, updatedAt: now(),
+    });
+  }
+
+  // Take a place out of the itinerary (every stop for it), even if it was voted in.
+  async function removeFromItinerary(p) {
+    const batch = db.batch();
+    for (const s of itinerary.filter(x => x.placeId === p.id)) batch.delete(col('itinerary').doc(s.id));
+    await batch.commit();
+  }
+
+  // Rename a place, and any itinerary stop for it that still has the old name.
+  async function renamePlace(p, name) {
+    const batch = db.batch();
+    batch.update(col('places').doc(p.id), { name: str(name, 80), updatedAt: now() });
+    for (const s of itinerary.filter(x => x.placeId === p.id && x.title === p.name)) {
+      batch.update(col('itinerary').doc(s.id), { title: str(name, 80), updatedAt: now() });
+    }
+    await batch.commit();
+  }
+
+  // When a place's voting deadline passes, whoever has the project open ends the voting.
+  // Only once everyone's votes have loaded, so the result counts every vote cast in time.
+  const concluding = new Set();
+  function checkDeadlines() {
+    if (!projectId || !me || !votesLoaded) return;
+    for (const p of places) {
+      if (p.status === 'closed' || !deadlinePassed(p) || concluding.has(p.id)) continue;
+      concluding.add(p.id);
+      concludeVoting(p, 'deadline').catch(() => {}).finally(() => concluding.delete(p.id));
+    }
+  }
+  // Every 30 seconds: close any voting whose time is up, and refresh the countdowns.
+  setInterval(() => {
+    if (!projectId) return;
+    checkDeadlines();
+    if (places.some(p => p.voteEndsAt && p.status !== 'closed')) { renderPins(); renderRows(); if (!(adding && draft) && !renamingPlace) renderDetail(); }
+  }, 30000);
+
+  // Time helpers for voting deadlines.
+  function timeLeft(ms) {
+    const mins = Math.max(1, Math.ceil((ms - Date.now()) / 60000));
+    if (mins >= 1440) { const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60); return `${d} d${h ? ` ${h} h` : ''}`; }
+    if (mins >= 60) { const h = Math.floor(mins / 60), m = mins % 60; return `${h} h${m ? ` ${m} min` : ''}`; }
+    return `${mins} min`;
+  }
+  function fmtWhen(ms) {
+    const d = new Date(ms), today = new Date();
+    const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d.toDateString() === today.toDateString() ? t : `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${t}`;
+  }
+  const VOTE_LIMITS = [[0, 'No time limit'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '24 hours'], [4320, '3 days']];
+  const fmtLimit = mins => (VOTE_LIMITS.find(([m]) => m === mins) || [0, `${mins} minutes`])[1];
 
   let itinForm = null; // null, or { id: stop id or null for a new one, pre: starting values }
   function renderItinerary() {
@@ -1433,7 +1655,7 @@
   function stopListening() {
     for (const u of unsubscribers) u();
     unsubscribers = [];
-    places = []; ballots = {}; messages = []; itinerary = []; reservations = []; loaded = false; voteBlocked = false;
+    places = []; ballots = {}; messages = []; itinerary = []; reservations = []; loaded = false; voteBlocked = false; votesLoaded = false; renamingPlace = null;
     itinForm = null; $('#itinFormBox').replaceChildren(); renderItinerary(); renderReservations();
   }
   function onDenied(err) {
@@ -1461,6 +1683,7 @@
     unsubscribers.push(col('places').onSnapshot(snap => {
       places = snap.docs.map(cleanPlace).filter(Boolean);
       loaded = true;
+      checkDeadlines();
       renderAll();
     }, onDataError));
     unsubscribers.push(col('votes').onSnapshot(snap => {
@@ -1472,6 +1695,8 @@
         next[doc.id] = { votes, name: str(x.name, 60), photo: typeof x.photo === 'string' ? x.photo : '' };
       }
       ballots = next;
+      votesLoaded = true;
+      checkDeadlines();
       renderAll();
     }, onDataError));
     unsubscribers.push(col('messages').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1517,7 +1742,8 @@
     });
     const lastActiveAt = x.lastActiveAt && x.lastActiveAt.toMillis ? x.lastActiveAt.toMillis() : 0;
     const startDate = ymd(x.startDate), endDate = ymd(x.endDate) || startDate;
-    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members, lastActiveAt, startDate, endDate };
+    const voteLimitMins = Number.isInteger(x.voteLimitMins) && x.voteLimitMins > 0 ? x.voteLimitMins : 0;
+    return { id: doc.id, name: str(x.name, 60) || 'Untitled project', createdBy: str(x.createdBy, 128), memberIds, members, lastActiveAt, startDate, endDate, voteLimitMins };
   }
   const myMemberInfo = () => ({ name: me.displayName || null, photo: me.photoURL || '', joinedAt: now() });
 
@@ -1822,6 +2048,23 @@
       change.onclick = () => { editingDates = true; renderProjectCard(); };
       box.append(el('div', { class: 'projhead' }, el('span', { class: 'tripdates', text: fmtTrip(p) }), change));
     }
+
+    // Voting time limit: new places (and reopened votes) get this long before voting ends.
+    box.append(el('p', { class: 'eyebrow', text: 'Voting time limit' }));
+    const limitSel = el('select', { id: 'voteLimit', class: 'limitsel', 'aria-label': 'Voting time limit' },
+      ...VOTE_LIMITS.map(([m, label]) => el('option', { value: String(m), text: label })));
+    limitSel.value = String(p.voteLimitMins || 0);
+    if (!VOTE_LIMITS.some(([m]) => m === (p.voteLimitMins || 0))) limitSel.append(el('option', { value: String(p.voteLimitMins), text: fmtLimit(p.voteLimitMins), selected: '' }));
+    limitSel.onchange = async () => {
+      const mins = Number(limitSel.value) || 0;
+      limitSel.disabled = true;
+      try {
+        await db.collection('projects').doc(p.id).update({ voteLimitMins: mins, lastActiveAt: now(), expireAt: expiry() });
+        toast(mins ? `New places get ${fmtLimit(mins)} of voting.` : 'No time limit on voting.');
+      } catch { limitSel.value = String(p.voteLimitMins || 0); toast("Couldn't save the time limit. Try again."); }
+      finally { limitSel.disabled = false; }
+    };
+    box.append(limitSel, el('p', { class: 'small', text: 'Applies to places added from now on, and to voting that gets reopened. When time runs out, the votes so far decide: going if Yes is ahead of No, otherwise greyed out.' }));
 
     box.append(el('p', { class: 'eyebrow', text: `People (${p.members.length})` }));
     const list = el('ul', { class: 'people' });

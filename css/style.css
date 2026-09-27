@@ -469,6 +469,25 @@ button.itinplace { font-size: 15px; }
 .itinform .small { margin: 8px 0 0; }
 .formrow { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; }
 .form select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--paper); color: var(--ink); }
+/* place name + rename, and voting status */
+.pheadtext { min-width: 0; flex: 1; }
+.namerow { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.renamebtn { font-size: 12px; }
+.renameform { margin: 0 0 4px; }
+.votestatus { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; }
+.votestatus p { margin: 0; font-size: 13px; }
+.roundlabel { font-weight: 700; color: var(--accent); }
+.deadline { font-weight: 700; }
+.ended { font-weight: 700; padding: 8px 10px; border-radius: 10px; }
+.ended.in { color: var(--yes); background: color-mix(in srgb, var(--yes) 12%, transparent); }
+.ended.out { color: var(--muted); background: var(--line); }
+.pastround { color: var(--muted); padding-left: 10px; border-left: 2px solid var(--line); }
+.votectl { margin-top: 12px; }
+.votectl .small { margin: 0; }
+.row .ar.deadlinetag { color: var(--accent); font-weight: 700; }
+.limitsel { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--paper); color: var(--ink); font-size: 14px; }
+#projCard .limitsel + .small { margin: 6px 0 0; }
+
 .fieldlabel { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 4px; }
 .fixeddate { margin: 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; font-size: 14px; }
 .tickrow { display: flex !important; align-items: center; gap: 10px; margin: 16px 0 4px !important; font-weight: 700; cursor: pointer; }

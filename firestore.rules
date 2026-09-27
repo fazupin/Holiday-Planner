@@ -52,6 +52,11 @@ service cloud.firestore {
           && changed().hasOnly(['startDate', 'endDate', 'lastActiveAt', 'expireAt'])
           && isText(request.resource.data.startDate, 10) && isText(request.resource.data.endDate, 10))
         ||
+        // Anyone in the project can set the voting time limit (minutes; 0 = no limit).
+        (uid() in members()
+          && changed().hasOnly(['voteLimitMins', 'lastActiveAt', 'expireAt'])
+          && request.resource.data.voteLimitMins is int && request.resource.data.voteLimitMins >= 0)
+        ||
         // Anyone in the project can mark it as recently used (keeps it from expiring).
         (uid() in members() && changed().hasOnly(['lastActiveAt', 'expireAt']))
         ||
@@ -94,10 +99,14 @@ service cloud.firestore {
           && request.resource.data.lat > 1.1 && request.resource.data.lat < 1.5
           && request.resource.data.lng > 103.5 && request.resource.data.lng < 104.2;
         // The person who added a place can edit it, or remove their name from it
-        // (this happens when they delete their account).
-        allow update: if isMember()
-          && resource.data.addedBy == uid()
-          && request.resource.data.addedBy == resource.data.addedBy;
+        // (this happens when they delete their account). Anyone in the project can rename it,
+        // and end, reopen or confirm its voting.
+        allow update: if isMember() && (
+          (resource.data.addedBy == uid() && request.resource.data.addedBy == resource.data.addedBy)
+          || (request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['name', 'status', 'result', 'round', 'voteEndsAt', 'closedAt', 'history', 'updatedAt'])
+              && isText(request.resource.data.name, 80) && request.resource.data.name.size() > 0)
+        );
         allow delete: if isMember();
       }
 
