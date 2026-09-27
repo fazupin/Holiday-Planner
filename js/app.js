@@ -1823,6 +1823,19 @@
       dateCtl = el('div', {}, el('label', { for: 'itDate', text: 'Date' }), f('itDate', { type: 'date' }));
     }
 
+    // Ways to meet: public transport, car or motorbike, both, or neither. Public transport is
+    // ticked for new stops, since most people in Singapore take the MRT.
+    const hasPt = opts.id ? !!(pre.ptWhere || pre.ptTime) : true;
+    const ptTick = f('itHasPt', { type: 'checkbox' });
+    ptTick.checked = hasPt;
+    const ptFields = el('div', { id: 'itPtFields' },
+      el('div', { class: 'formrow' },
+        el('div', {}, el('label', { for: 'itPtWhere', text: 'Meet at' }), f('itPtWhere', { maxlength: '80', placeholder: 'e.g. Bugis MRT', list: 'itStations' })),
+        el('div', {}, el('label', { for: 'itPtTime', text: 'By' }), f('itPtTime', { type: 'time' }))),
+      el('datalist', { id: 'itStations' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
+      el('p', { class: 'small', id: 'itHint' }));
+    ptFields.hidden = !hasPt;
+
     const hasCar = !!(pre.carWhere || pre.carTime);
     const carTick = f('itHasCar', { type: 'checkbox' });
     carTick.checked = hasCar;
@@ -1838,13 +1851,10 @@
       el('div', { class: 'formrow' }, dateCtl,
         el('div', {}, el('label', { for: 'itTime', text: 'Time at the place' }), f('itTime', { type: 'time' }))),
       el('p', { class: 'eyebrow', text: 'Where to meet' }),
-      el('p', { class: 'small', text: '🚆 By public transport' }),
-      el('div', { class: 'formrow' },
-        el('div', {}, el('label', { for: 'itPtWhere', text: 'Meet at' }), f('itPtWhere', { maxlength: '80', placeholder: 'e.g. Bugis MRT', list: 'itStations' })),
-        el('div', {}, el('label', { for: 'itPtTime', text: 'By' }), f('itPtTime', { type: 'time' }))),
-      el('datalist', { id: 'itStations' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
-      el('p', { class: 'small', id: 'itHint' }),
-      el('label', { class: 'tickrow', for: 'itHasCar' }, carTick, el('span', { text: '🚗 Someone’s coming by car or motorbike' })),
+      el('p', { class: 'small', text: 'Tick one, both, or neither.' }),
+      el('label', { class: 'tickrow', for: 'itHasPt' }, ptTick, el('span', { text: '🚆 By public transport' })),
+      ptFields,
+      el('label', { class: 'tickrow', for: 'itHasCar' }, carTick, el('span', { text: '🚗 By car or motorbike' })),
       carFields,
       el('label', { for: 'itNotes', text: 'Notes (optional)' }), el('textarea', { id: 'itNotes', maxlength: '300', placeholder: 'e.g. Booking under Faz. Bring cash.' }),
       el('p', { class: 'err', id: 'itErr', hidden: '' }),
@@ -1861,9 +1871,9 @@
     $('#itNotes').value = pre.notes || '';
 
     // Suggestions that follow what you pick, without overwriting anything you've typed yourself.
-    const touched = new Set(opts.id ? ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime'] : []);
-    if (opts.fresh) touched.clear(); // a just-confirmed place: times are still suggestions
-    for (const id of ['itTitle', 'itCarWhere', 'itCarTime', 'itPtWhere', 'itPtTime']) $('#' + id).addEventListener('input', () => touched.add(id));
+    const touched = new Set(opts.id ? ['itTitle', 'itCarWhere', 'itPtWhere'] : []);
+    if (opts.fresh) touched.clear(); // a just-confirmed place: everything is still a suggestion
+    for (const id of ['itTitle', 'itCarWhere', 'itPtWhere']) $('#' + id).addEventListener('input', () => touched.add(id));
     const suggest = (id, value) => { if (!touched.has(id)) $('#' + id).value = value; };
     const hint = () => {
       const p = places.find(x => x.id === placeSel.value);
@@ -1874,8 +1884,19 @@
       if (p) { suggest('itTitle', p.name); suggest('itCarWhere', p.name); suggest('itPtWhere', nearestStation(p.lat, p.lng)); }
       hint();
     };
-    $('#itTime').addEventListener('input', () => { const t = $('#itTime').value; suggest('itCarTime', t); suggest('itPtTime', minusMinutes(t, 15)); });
-    carTick.onchange = () => { carFields.hidden = !carTick.checked; };
+    // Changing the time at the place moves the meeting times with it: 15 minutes earlier at the
+    // MRT (to walk over), and the same time for car or motorbike. They can be changed afterwards.
+    const followTime = () => { const t = $('#itTime').value; $('#itPtTime').value = minusMinutes(t, 15); $('#itCarTime').value = t; };
+    $('#itTime').addEventListener('input', followTime);
+    $('#itTime').addEventListener('change', followTime);
+    ptTick.onchange = () => {
+      ptFields.hidden = !ptTick.checked;
+      if (ptTick.checked && !$('#itPtTime').value && $('#itTime').value) $('#itPtTime').value = minusMinutes($('#itTime').value, 15);
+    };
+    carTick.onchange = () => {
+      carFields.hidden = !carTick.checked;
+      if (carTick.checked && !$('#itCarTime').value && $('#itTime').value) $('#itCarTime').value = $('#itTime').value;
+    };
     hint();
 
     $('#itCancel').onclick = closeItinForm;
@@ -1884,11 +1905,11 @@
       const title = $('#itTitle').value.trim();
       if (!title) { $('#itErr').textContent = 'Give the stop a name.'; $('#itErr').hidden = false; return; }
       const p = places.find(x => x.id === placeSel.value);
-      const car = carTick.checked;
+      const car = carTick.checked, pt = ptTick.checked;
       const data = {
         title: str(title, 80), icon: p ? p.icon : (pre.icon || '📍'), placeId: p ? p.id : null,
         date: ymd($('#itDate').value), time: hhmm($('#itTime').value),
-        ptWhere: str($('#itPtWhere').value.trim(), 80), ptTime: hhmm($('#itPtTime').value),
+        ptWhere: pt ? str($('#itPtWhere').value.trim(), 80) : '', ptTime: pt ? hhmm($('#itPtTime').value) : '',
         carWhere: car ? str($('#itCarWhere').value.trim(), 80) : '', carTime: car ? hhmm($('#itCarTime').value) : '',
         notes: str($('#itNotes').value.trim(), 300), updatedAt: now(), expireAt: expiry(),
       };

@@ -4,6 +4,10 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Itinerary meeting points
+- **Meeting times follow the stop's time**, including when editing a saved stop: 15 minutes earlier at the MRT, and the same time for car or motorbike. They can still be changed afterwards.
+- **Public transport has a tick box** like car or motorbike, so a stop can have either, both or neither. It's ticked for new stops.
+
 ### Deleting old data
 - **The app deletes old data itself**, since Firebase's automatic deletion (TTL) needs a paid plan.
   - A project nobody has opened for 12 months is deleted the next time its owner signs in.
