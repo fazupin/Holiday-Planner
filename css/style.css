@@ -433,6 +433,9 @@ path.res { fill: var(--sea-in); stroke: none; }
 .assist p { margin: 0; }
 .assist .row2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .assist .primary, .assist .ghost { padding: 6px 12px; font-size: 13px; }
+.assist .atplace { display: flex; flex-direction: column; gap: 6px; }
+.assist .atplace .eyebrow { margin: 4px 0 0; }
+.assist .atplace .results { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
 .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .results button { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 10px; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; }
 .results button:hover { border-color: var(--accent); }

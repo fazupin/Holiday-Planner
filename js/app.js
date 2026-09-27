@@ -687,7 +687,11 @@
   function updateFormCoords() {
     const c = $('#fCoords');
     if (c && draft) c.textContent = coordText(draft.lat, draft.lng) + ' · drag the pin or tap the map to move it';
+    // Keep "Nearest MRT" in step with the pin, unless someone typed their own.
+    const m = $('#fMrt');
+    if (m && draft && m.value === mrtAuto) { mrtAuto = nearestMrtText(draft.lat, draft.lng); m.value = mrtAuto; }
   }
+  let mrtAuto = ''; // the last "Nearest MRT" the form filled in by itself
   function setIcon(ic) {
     formIcon = ic;
     const icons = $('#fIcons');
@@ -722,7 +726,10 @@
       SOURCE_NOTES[pre.source] ? el('p', { class: 'note', text: SOURCE_NOTES[pre.source] }) : null,
       el('label', { for: 'fName', text: 'Name' }), el('input', { id: 'fName', maxlength: '80', placeholder: 'e.g. Clarke Quay', required: '' }),
       el('label', { text: 'Icon' }), icons,
-      el('label', { for: 'fArea', text: 'Area or nearest MRT (optional)' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. Clarke Quay MRT' }),
+      el('label', { for: 'fArea', text: 'Area (optional)' }), el('input', { id: 'fArea', maxlength: '60', placeholder: 'e.g. Clarke Quay' }),
+      el('label', { for: 'fMrt', text: 'Nearest MRT' }), el('input', { id: 'fMrt', maxlength: '60', placeholder: 'e.g. Clarke Quay MRT', list: 'fMrtList' }),
+      el('datalist', { id: 'fMrtList' }, ...mrtStations.filter(s => !s.lrtOnly).map(s => el('option', { value: `${s.name} MRT` }))),
+      el('p', { class: 'small limitnote', text: 'Filled in from the pin (straight-line distance). Change it if there\'s a better station.' }),
       el('label', { for: 'fBlurb', text: 'Why go? (optional)' }), el('input', { id: 'fBlurb', maxlength: '300', placeholder: 'One line to sell it to the group' }),
       el('label', { for: 'fActs', text: 'Things to do, one per line' }), el('textarea', { id: 'fActs', placeholder: 'River cruise\nDinner by the water\nBar hopping' }),
       el('label', { for: 'fLimit', text: 'Voting time limit' }), limitSelect('fLimit', 0),
@@ -732,6 +739,7 @@
     box.append(form);
     $('#fName').value = pre.name || '';
     $('#fArea').value = pre.area || '';
+    mrtAuto = ''; $('#fMrt').value = ''; // filled in from the pin below
     $('#fBlurb').value = pre.blurb || '';
     $('#fActs').value = (pre.activities || []).join('\n');
 
@@ -741,7 +749,7 @@
       if (!name) { err.textContent = 'Give the place a name.'; err.hidden = false; $('#fName').focus(); return; }
       const doc = {
         name: str(name, 80), icon: formIcon,
-        area: str($('#fArea').value.trim(), 60), mrt: '',
+        area: str($('#fArea').value.trim(), 60), mrt: str($('#fMrt').value.trim(), 60),
         blurb: str($('#fBlurb').value.trim(), 300),
         activities: $('#fActs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12).map(s => str(s, 160)),
         lat: +draft.lat.toFixed(6), lng: +draft.lng.toFixed(6),
@@ -821,7 +829,7 @@
     const open = votingOpen(p);
     const result = outcome(p, t);
     const mine = me ? ((ballots[me.uid] || {}).votes || {})[voteKey(p)] : undefined;
-    const meta = [p.area, p.mrt].filter(Boolean).join(' · ');
+    const meta = [p.area, p.mrt || nearestMrtText(p.lat, p.lng)].filter(Boolean).join(' · ');
     const gmaps = el('a', { href: `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`, target: '_blank', rel: 'noopener', text: 'Open in Google Maps' });
     const byline = p.addedByName ? `Suggested by ${p.addedBy === (me && me.uid) ? 'you' : p.addedByName}` : '';
     const out = isVotedOut(t, p);
@@ -1263,7 +1271,40 @@
     return r.json();
   }
   const osmSearch = async q => (await osm('search', { q, countrycodes: 'sg', limit: '5' })).map(fromOsm).filter(Boolean);
-  const osmReverse = async (lat, lng) => { const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
+  // An address (Singapore postal code, or "1 Stadium Pl") can hold a whole mall. Nominatim only
+  // returns the best match, so for addresses we also list every named place around that spot.
+  const looksLikeAddress = q => /\b\d{6}\b/.test(q) || /^\s*(blk\s*)?\d+[a-z]?\s+[a-z]/i.test(q);
+  const SKIP_AMENITY = new Set(['parking', 'parking_entrance', 'parking_space', 'motorcycle_parking', 'bicycle_parking', 'toilets', 'atm',
+    'bench', 'waste_basket', 'waste_disposal', 'recycling', 'vending_machine', 'telephone', 'post_box', 'shelter', 'taxi',
+    'charging_station', 'drinking_water', 'loading_dock', 'smoking_area']);
+  const KIND_KEYS = ['shop', 'amenity', 'leisure', 'tourism', 'sport', 'office', 'craft', 'building'];
+  const kindOf = tags => {
+    const k = KIND_KEYS.find(key => tags[key]);
+    if (!k) return '';
+    const v = tags[k] === 'yes' ? k : tags[k];
+    return v.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  };
+  async function placesAt(lat, lng) {
+    const els = await overpass(`[out:json][timeout:15];
+      nwr(around:70,${lat},${lng})["name"][~"^(shop|amenity|leisure|tourism|sport|office|craft|building)$"~"."];
+      out center tags 60;`);
+    const seen = new Set(), list = [];
+    for (const e of els) {
+      const t = e.tags || {}, name = str(t['name:en'] || t.name, 80);
+      const la = e.lat != null ? e.lat : e.center && e.center.lat, ln = e.lon != null ? e.lon : e.center && e.center.lon;
+      if (!name || la == null || SKIP_AMENITY.has(t.amenity) || t.highway || t.railway || t.public_transport) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const type = t.shop || t.amenity || t.leisure || t.tourism || '';
+      const big = t.shop === 'mall' || (t.building && !t.shop && !t.amenity && !t.leisure) ? 0 : 1; // the building or mall first
+      const addr = [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ');
+      list.push({ name, lat: +la, lng: +ln, icon: ICON_BY_TYPE[type] || '📍', big,
+        address: [kindOf(t), t['addr:unit'] || t['addr:floor'] ? `#${t['addr:unit'] || t['addr:floor']}` : '', addr].filter(Boolean).join(' · ') });
+    }
+    return list.sort((a, b) => a.big - b.big || a.name.localeCompare(b.name));
+  }
+  const osmReverse = async (lat, lng) =>{ const x = await osm('reverse', { lat: String(lat), lon: String(lng), zoom: '18' }); return x && !x.error ? fromOsm(x) : null; };
 
   // The helper box above the message box. Only the person who sent the message sees it.
   const TIP = 'For an exact pin: in the Google Maps app, press and hold on the place, copy the numbers at the top (like 1.28473, 103.83251) and paste them here.';
@@ -1275,22 +1316,41 @@
     go.onclick = () => runSearch(q);
     assist(el('p', { text: intro }), el('div', { class: 'row2' }, go, closeBtn('No thanks')));
   }
+  let searchSeq = 0;
   async function runSearch(q) {
+    const seq = ++searchSeq;
     assist(el('p', {}, el('span', { class: 'spin', 'aria-hidden': 'true' }), ` Searching for "${str(q, 60)}"…`));
     try {
       const results = await osmSearch(q);
+      if (seq !== searchSeq) return;
       if (!results.length) {
         assist(el('p', { text: 'No matches in Singapore. Try the full name, or add the street or area.' }), el('p', { class: 'small', text: TIP }), el('div', { class: 'row2' }, closeBtn()));
         return;
       }
-      const list = el('ul', { class: 'results' });
-      for (const r of results) {
-        const b = el('button', { type: 'button' }, el('span', { 'aria-hidden': 'true', text: r.icon }),
-          el('span', {}, el('b', { text: r.name }), el('small', { text: r.address })));
-        b.onclick = () => { assist(); startAdd({ ...r, source: 'search' }); };
-        list.append(el('li', {}, b));
+      const resultList = items => {
+        const list = el('ul', { class: 'results' });
+        for (const r of items) {
+          const b = el('button', { type: 'button' }, el('span', { 'aria-hidden': 'true', text: r.icon }),
+            el('span', {}, el('b', { text: r.name }), el('small', { text: r.address })));
+          b.onclick = () => { assist(); startAdd({ ...r, area: r.area || results[0].area, source: 'search' }); };
+          list.append(el('li', {}, b));
+        }
+        return list;
+      };
+      const more = looksLikeAddress(q) ? el('div', { class: 'atplace' },
+        el('p', { class: 'small' }, el('span', { class: 'spin', 'aria-hidden': 'true' }), ' Looking for other places at this address…')) : null;
+      assist(el('p', { text: 'Which one is it?' }), resultList(results), more, el('div', { class: 'row2' }, closeBtn('None of these')));
+      if (more) {
+        const top = results[0];
+        placesAt(top.lat, top.lng).then(found => {
+          if (seq !== searchSeq || !more.isConnected) return;
+          const shown = new Set(results.map(r => r.name.toLowerCase()));
+          const extra = found.filter(r => !shown.has(r.name.toLowerCase())).slice(0, 30);
+          more.replaceChildren(...(extra.length
+            ? [el('p', { class: 'eyebrow', text: `Also at this address (${extra.length})` }), resultList(extra)]
+            : [el('p', { class: 'small', text: 'No other places found at this address on OpenStreetMap.' })]));
+        }).catch(() => { if (more.isConnected) more.replaceChildren(el('p', { class: 'small', text: "Couldn't look up other places at this address." })); });
       }
-      assist(el('p', { text: 'Which one is it?' }), list, el('div', { class: 'row2' }, closeBtn('None of these')));
     } catch {
       assist(el('p', { text: "Search isn't working right now. Try again in a minute, or paste the coordinates." }), el('div', { class: 'row2' }, closeBtn()));
     }
@@ -1354,14 +1414,23 @@
   const fmtTime = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
   const fmtDate = d => { if (!d) return 'Date to be decided'; const [y, m, day] = d.split('-').map(Number); return new Date(y, m - 1, day).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
   const minusMinutes = (t, n) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); const total = (h * 60 + m - n + 1440) % 1440; return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; };
-  function nearestStation(lat, lng) {
+  // The closest MRT station to a spot, and how far it is in a straight line (metres).
+  function nearestStationInfo(lat, lng) {
     let best = null, bestD = Infinity;
     for (const s of mrtStations) {
       if (s.lrtOnly) continue;
       const dx = (s.lng - lng) * Math.cos(lat * Math.PI / 180), dy = s.lat - lat, d = dx * dx + dy * dy;
       if (d < bestD) { bestD = d; best = s; }
     }
-    return best ? `${best.name} MRT` : '';
+    return best ? { name: `${best.name} MRT`, m: Math.round(Math.sqrt(bestD) * 111320) } : null;
+  }
+  function nearestStation(lat, lng) { const s = nearestStationInfo(lat, lng); return s ? s.name : ''; }
+  // For a place's "Nearest MRT": e.g. "Stadium MRT (~350 m)".
+  function nearestMrtText(lat, lng) {
+    const s = nearestStationInfo(lat, lng);
+    if (!s) return '';
+    const dist = s.m < 1000 ? `~${Math.max(50, Math.round(s.m / 50) * 50)} m` : `~${(s.m / 1000).toFixed(1)} km`;
+    return str(`${s.name} (${dist})`, 60);
   }
   const sortStops = list => [...list].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || (a.time || '99').localeCompare(b.time || '99') || a.title.localeCompare(b.title));
 

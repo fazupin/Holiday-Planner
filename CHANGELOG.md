@@ -4,6 +4,11 @@ A record of how Wanderly was built, one iteration at a time. The newest changes 
 
 ## 27 September 2026
 
+### Place search
+- **Nearest MRT comes from the pin.** New places get a separate "Nearest MRT" field, filled with the closest station and its distance, e.g. "Stadium MRT (~350 m)". It follows the pin when dragged. Before, the neighbourhood name (e.g. "Kallang") appeared where people expected a station.
+  - Older places show their nearest MRT the same way.
+- **Everything at an address.** Searching an address or postal code also lists the other named places there, such as the mall itself and the shops inside it.
+
 ### Voting controls
 - **Time limits are set per place**, instead of one limit for the whole project.
   - Choose one when adding a place ("Vote within 2 hours"), or leave it with no limit.
